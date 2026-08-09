@@ -8,30 +8,27 @@ The product specification lives in `AI_Music_Video_Studio_Master_Prompt.md`. `PL
 
 ## Current implementation
 
-The repository currently contains the executable foundation, durable project persistence, and provider-independent AI seams:
+The repository currently contains the executable foundation, durable project/provider persistence, and a restart-safe asynchronous job engine:
 
 - Next.js 16 + React 19 + TypeScript frontend
-- ASP.NET Core .NET 10 backend
-- layered backend projects: Domain, Application, Infrastructure, API
-- typed frontend/backend contract strategy based on ASP.NET OpenAPI + `openapi-typescript`
-- DuckDB metadata persistence using `DuckDB.NET.Data.Full`
-- durable project model for title, artist, lyrics, storyline/meaning/direction, mood, genre, output target, preset, budgets, and reusable-reference IDs
-- application and project settings repositories
-- filesystem media storage with SHA-256 metadata, path-traversal protection, and deterministic per-project directories
-- media metadata stored in DuckDB while audio/image/video bytes stay outside the database
-- project CRUD API plus portable project JSON export/import
-- provider capability interfaces for text, image, image editing, video, image-to-video, video-to-video, lip sync, upscale, transcription, vision evaluation, and Director planning
-- provider/model catalog with capability metadata instead of global hard-coded model assumptions
-- persisted provider settings for enabled state, credential reference, default models, concurrency, timeout, retries, allowed operations, priority, and fallback priority
-- environment credential resolution with opaque reference kinds reserved for OS/external secret-store adapters; resolved secret values are never returned by the API or persisted
-- normalized provider result/failure contracts covering rate limit, quota, credits/auth, rejection, invalid parameters, unsupported capability, network, timeout, transient, and permanent failures
-- offline `MockDirectorProvider`, `MockImageProvider`, and `MockVideoProvider` with controllable success/delay/failure scenarios
+- ASP.NET Core .NET 10 modular backend: Domain, Application, Infrastructure, API
+- typed frontend/backend API contract based on ASP.NET OpenAPI + `openapi-typescript`
+- DuckDB authoritative metadata persistence using `DuckDB.NET.Data.Full`
+- durable project model, project/application settings, filesystem media storage, project CRUD, and portable project JSON
+- provider-independent capability interfaces, capability-aware model catalog, persisted safe provider settings, credential references, normalized provider failures, and offline mock Director/Image/Video providers
+- persistent jobs, attempts, dependencies, provider task IDs, retry metadata, costs, scheduling, parent/scene/project associations, and claim leases
+- explicit job state machine covering queued/provider/processing/waiting/retry/rejected/permanent/paused/cancelled/completed states
+- background `PersistentJobWorker` with safe one-process claiming and restart recovery
+- dependency release/failure propagation, bounded retry scheduling, quota/provider waits, pause/resume/retry/restart/cancel controls at job/project/scene scope
+- protection against re-submitting provider work when a persisted provider task ID already exists
+- SSE job-change stream that reloads persisted state before emission; DuckDB, not the stream, is authoritative
+- typed frontend job-list/control/event contracts; the queue UI itself remains a later product block
 - `/healthz` and `/api/system/version` bootstrap endpoints
 - JSON console logging and `X-Correlation-ID` request correlation
-- architecture, API, DuckDB, media-storage, project round-trip, and provider subsystem integration tests
-- GitHub Actions CI for frontend and backend; direct `main` pushes publish detailed commit statuses plus `ci/combined`
+- architecture, project, persistence, provider, job-engine, job-API, concurrency, restart, and failure-mode tests
+- GitHub Actions CI for frontend/backend; direct `main` pushes publish detailed linked commit statuses plus `ci/combined`
 
-Real paid AI provider adapters, persistent generation jobs, FFmpeg rendering, music analysis, storyboard generation, and editor functionality remain unfinished and are tracked in `PLAN.md`.
+Real paid AI adapters, music analysis, storyboard generation, generation-specific job dispatch, FFmpeg rendering, and editor functionality remain unfinished and are tracked in `PLAN.md`.
 
 ## Prerequisites
 
@@ -40,54 +37,42 @@ Real paid AI provider adapters, persistent generation jobs, FFmpeg rendering, mu
 - .NET 10 SDK
 - Git
 
-FFmpeg becomes a runtime prerequisite when the render/media-analysis blocks are implemented; it is not required for the current persistence/provider foundation.
+FFmpeg becomes a runtime prerequisite when the media-analysis/render blocks are implemented.
 
 ## Install
 
-From the repository root:
-
 ```bash
 npm install
-
 dotnet restore backend/OpenMusicVideoCreator.sln
 ```
 
 ## Run locally
 
-Start the backend:
+Backend:
 
 ```bash
 dotnet run --project backend/src/OpenMusicVideoCreator.Api/OpenMusicVideoCreator.Api.csproj
 ```
 
-The development launch profile listens on:
+Development backend URL: `http://localhost:5100`.
 
-```text
-http://localhost:5100
-```
-
-Start the frontend in a second terminal:
+Frontend:
 
 ```bash
 npm run dev:web
 ```
 
-Open:
+Open `http://localhost:3000`.
 
-```text
-http://localhost:3000
-```
-
-The frontend reads `NEXT_PUBLIC_API_BASE_URL` and defaults to `http://localhost:5100`. Copy `frontend/.env.example` to `frontend/.env.local` only when you need to override it.
+The frontend reads `NEXT_PUBLIC_API_BASE_URL` and defaults to `http://localhost:5100`.
 
 ## Persistence and local data
 
-Default backend storage:
+Default storage:
 
 ```text
 data/
   app.duckdb
-
 projects/
   {project-id}/
     source/
@@ -102,20 +87,11 @@ projects/
     renders/
 ```
 
-Configure these paths through:
+Configure with `Storage__DatabasePath` and `Storage__ProjectsRoot` or the equivalent `Storage` section.
 
-```text
-Storage__DatabasePath
-Storage__ProjectsRoot
-```
-
-or the equivalent `Storage` section in `appsettings.json`.
-
-DuckDB is authoritative for running application metadata. Large media blobs are never stored in DuckDB. Stored media receives a unique file name and SHA-256 checksum, while DuckDB records only metadata such as location, checksum, MIME type, dimensions, duration, size, source, and timestamps.
+DuckDB stores structured metadata only. Large audio/image/video data remains on filesystem/object storage. Media metadata includes location, SHA-256, MIME type, dimensions, duration, size, source, and timestamps.
 
 ## Project API
-
-Current project endpoints:
 
 ```text
 GET    /api/projects/
@@ -127,13 +103,9 @@ GET    /api/projects/{id}/export
 POST   /api/projects/import
 ```
 
-Deleting or changing project reference metadata does not silently delete generated media assets. Media deletion is an explicit storage operation.
-
-The export endpoint returns portable versioned project JSON. It is useful for interchange/backup, but DuckDB remains authoritative while the application is running.
+Portable project JSON is versioned interchange/backup data; DuckDB remains runtime-authoritative. Project/reference edits do not silently delete generated assets.
 
 ## Provider API and credentials
-
-Current provider endpoints:
 
 ```text
 GET /api/providers/
@@ -141,9 +113,7 @@ GET /api/providers/{providerId}/settings
 PUT /api/providers/{providerId}/settings
 ```
 
-The provider catalog reports model capabilities such as references, start/end frames, seed, negative prompts, native audio, duration options, aspect ratios, resolutions, and reference limits. Frontend code can therefore query capabilities rather than embedding model assumptions.
-
-Provider settings persist only a credential **reference**. Example environment reference:
+Provider settings persist credential references, never secret values. Example:
 
 ```json
 {
@@ -152,21 +122,85 @@ Provider settings persist only a credential **reference**. Example environment r
 }
 ```
 
-The value of `OPENAI_API_KEY` is resolved only inside the credential resolver when a provider operation needs it. It is not stored in DuckDB, project exports, API responses, or logs. `OperatingSystem` and `External` reference kinds are part of the stable contract for later secret-store adapters; the current built-in resolver implements environment references only.
+The current built-in resolver supports environment references. `OperatingSystem` and `External` reference kinds are stable extension seams for later secret-store adapters. Current registered providers are offline mocks and require no API keys.
 
-The currently registered providers are offline mocks. They require no API keys and are intended for tests and development of later generation/job workflows.
+## Persistent job engine
+
+Job states are persisted in DuckDB and survive backend restarts. The current state model includes:
+
+```text
+Draft
+Queued
+Submitting
+ProviderQueued
+Generating
+Downloading
+Validating
+Completed
+Paused
+WaitingForQuota
+WaitingForProvider
+WaitingForDependency
+RetryScheduled
+Rejected
+FailedRetryable
+FailedPermanent
+Cancelled
+```
+
+A completed/rejected/permanent/cancelled job is terminal. Normal resume does not regenerate completed work; a deliberate `restart` action is required to create a new attempt.
+
+Jobs may depend on other jobs. Dependents stay `WaitingForDependency` until prerequisites complete; a failed terminal dependency moves the dependent to a permanent dependency failure.
+
+Provider failures are normalized into quota/provider waits, bounded scheduled retries, rejection, retryable failure, or permanent failure. A job with a persisted provider task ID is reconciled after restart rather than blindly resubmitted, reducing duplicate paid requests.
+
+The worker is enabled by default:
+
+```json
+{
+  "Jobs": {
+    "WorkerEnabled": true
+  }
+}
+```
+
+Tests disable/remove the hosted worker and drive `JobProcessor` deterministically.
+
+### Job API
+
+```text
+GET  /api/jobs/
+POST /api/jobs/
+GET  /api/jobs/{id}
+GET  /api/jobs/{id}/attempts
+GET  /api/jobs/{id}/dependencies
+POST /api/jobs/{id}/pause
+POST /api/jobs/{id}/resume
+POST /api/jobs/{id}/retry
+POST /api/jobs/{id}/restart
+POST /api/jobs/{id}/cancel
+POST /api/jobs/projects/{projectId}/pause|resume|cancel
+POST /api/jobs/projects/{projectId}/scenes/{sceneId}/pause|resume|cancel
+GET  /api/jobs/events
+```
+
+`/api/jobs/events` is an SSE notification stream. Notifications contain freshly reloaded persisted job state; the stream itself is not durable state.
 
 ## Typed API contracts
 
-ASP.NET Core exposes OpenAPI in the Development environment. The frontend keeps a generated TypeScript contract snapshot in `frontend/src/api/schema.d.ts`.
+ASP.NET Core OpenAPI is the source contract. The frontend snapshot is committed at:
 
-With the backend running locally, regenerate it with:
+```text
+frontend/src/api/schema.d.ts
+```
+
+With the backend running, regenerate it using:
 
 ```bash
 npm run api:generate --workspace frontend
 ```
 
-Frontend API code should derive request/response types from that generated schema rather than duplicating DTO shapes by hand.
+Frontend API code derives types from this schema instead of maintaining parallel DTO definitions.
 
 ## Validate
 
@@ -182,7 +216,7 @@ PowerShell:
 ./scripts/validate.ps1
 ```
 
-Or run the main commands individually:
+Core commands:
 
 ```bash
 npm run lint
@@ -207,7 +241,7 @@ backend/
   tests/
     OpenMusicVideoCreator.ArchitectureTests/
     OpenMusicVideoCreator.Api.Tests/
-.github/workflows/ci.yml          baseline CI + direct-main status
+.github/workflows/ci.yml          CI + linked direct-main commit statuses
 scripts/                          repo validation + agent-skill helpers
 ```
 
@@ -221,4 +255,4 @@ Read before implementation work:
 4. `ARCHITECTURE.md`
 5. `SKILLS.md`
 
-Core rules include modular reusable code, provider-independent business logic, persisted asynchronous generation, non-destructive asset versioning, bounded retries/cost, and keeping successful work resumable across application restarts.
+Core rules include modular reusable code, provider-independent business logic, persisted asynchronous generation, non-destructive asset versioning, bounded retries/cost, and restart-safe continuation.
