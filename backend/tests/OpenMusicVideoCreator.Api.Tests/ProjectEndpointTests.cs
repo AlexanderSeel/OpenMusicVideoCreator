@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using OpenMusicVideoCreator.Api.Contracts.Projects;
 using OpenMusicVideoCreator.Domain.Projects;
 using Xunit;
@@ -9,6 +11,11 @@ namespace OpenMusicVideoCreator.Api.Tests;
 
 public sealed class ProjectEndpointTests : IClassFixture<TestApplicationFactory>
 {
+    private static readonly JsonSerializerOptions ApiJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() },
+    };
+
     private readonly TestApplicationFactory _factory;
 
     public ProjectEndpointTests(TestApplicationFactory factory)
@@ -22,28 +29,29 @@ public sealed class ProjectEndpointTests : IClassFixture<TestApplicationFactory>
         using var client = _factory.CreateClient();
         var request = CreateRequest("First title");
 
-        using var createResponse = await client.PostAsJsonAsync("/api/projects", request);
+        using var createResponse = await client.PostAsJsonAsync("/api/projects", request, ApiJsonOptions);
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
-        var created = await createResponse.Content.ReadFromJsonAsync<ProjectResponse>();
+        var created = await createResponse.Content.ReadFromJsonAsync<ProjectResponse>(ApiJsonOptions);
         Assert.NotNull(created);
         Assert.Equal("First title", created.Title);
 
         using var getResponse = await client.GetAsync($"/api/projects/{created.Id}");
         getResponse.EnsureSuccessStatusCode();
-        var fetched = await getResponse.Content.ReadFromJsonAsync<ProjectResponse>();
+        var fetched = await getResponse.Content.ReadFromJsonAsync<ProjectResponse>(ApiJsonOptions);
         Assert.NotNull(fetched);
         AssertProjectResponseEqual(created, fetched);
 
         using var updateResponse = await client.PutAsJsonAsync(
             $"/api/projects/{created.Id}",
-            CreateRequest("Updated title"));
+            CreateRequest("Updated title"),
+            ApiJsonOptions);
         updateResponse.EnsureSuccessStatusCode();
-        var updated = await updateResponse.Content.ReadFromJsonAsync<ProjectResponse>();
+        var updated = await updateResponse.Content.ReadFromJsonAsync<ProjectResponse>(ApiJsonOptions);
         Assert.NotNull(updated);
         Assert.Equal("Updated title", updated.Title);
         Assert.Equal(created.Id, updated.Id);
 
-        var listed = await client.GetFromJsonAsync<ProjectResponse[]>("/api/projects");
+        var listed = await client.GetFromJsonAsync<ProjectResponse[]>("/api/projects", ApiJsonOptions);
         Assert.NotNull(listed);
         Assert.Contains(listed, project => project.Id == created.Id);
 
@@ -61,7 +69,7 @@ public sealed class ProjectEndpointTests : IClassFixture<TestApplicationFactory>
             "/api/projects/import",
             new StringContent(portableJson, Encoding.UTF8, "application/json"));
         Assert.Equal(HttpStatusCode.Created, importResponse.StatusCode);
-        var imported = await importResponse.Content.ReadFromJsonAsync<ProjectResponse>();
+        var imported = await importResponse.Content.ReadFromJsonAsync<ProjectResponse>(ApiJsonOptions);
         Assert.NotNull(imported);
         Assert.Equal(created.Id, imported.Id);
         Assert.Equal("Updated title", imported.Title);
