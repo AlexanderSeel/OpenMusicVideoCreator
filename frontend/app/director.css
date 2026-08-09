@@ -1,0 +1,73 @@
+.director-panel {
+  max-width: 1120px;
+  margin: 1rem auto 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgb(10 24 34 / 78%);
+  box-shadow: var(--shadow);
+  padding: clamp(1.2rem, 3vw, 2rem);
+}
+.director-empty > p { margin: 0; color: var(--text-muted); font-size: 0.8rem; }
+.director-controls { display: grid; gap: 0.9rem; border: 1px solid var(--line); border-radius: var(--radius); padding: 0.9rem; background: rgb(255 255 255 / 2%); }
+.director-control-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.director-control { display: grid; gap: 0.35rem; }
+.director-control > span, .arc-slider > span { display: flex; justify-content: space-between; gap: 0.5rem; color: var(--text-soft); font-size: 0.68rem; }
+.director-control output, .arc-slider output { color: var(--accent); font-variant-numeric: tabular-nums; }
+.director-control small { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.6rem; }
+.director-control input, .arc-slider input, .scene-inspector input[type="range"] { padding: 0; }
+.director-controls > .button { justify-self: end; }
+
+.visual-arc-editor, .storyboard-workspace { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+.arc-points { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.65rem; margin-top: 0.8rem; }
+.arc-point { display: grid; gap: 0.55rem; border: 1px solid var(--line); border-radius: var(--radius); background: rgb(4 13 20 / 42%); padding: 0.75rem; }
+.arc-point-top { display: grid; grid-template-columns: minmax(0, 1fr) 5.5rem; gap: 0.45rem; }
+.arc-point input, .arc-point textarea { padding: 0.55rem 0.6rem; font-size: 0.7rem; }
+.arc-slider { display: grid; gap: 0.2rem; }
+
+.storyboard-layout { display: grid; grid-template-columns: minmax(230px, 0.85fr) minmax(0, 1.5fr); gap: 0.85rem; margin-top: 0.8rem; }
+.storyboard-cards { display: grid; gap: 0.45rem; align-content: start; max-height: 58rem; overflow-y: auto; }
+.storyboard-card { display: grid; grid-template-columns: auto 1fr; column-gap: 0.65rem; row-gap: 0.18rem; width: 100%; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgb(255 255 255 / 2%); padding: 0.7rem; text-align: left; cursor: pointer; }
+.storyboard-card:hover { background: rgb(255 255 255 / 4%); }
+.storyboard-card.is-selected { border-color: rgb(102 212 255 / 35%); background: var(--accent-soft); }
+.scene-number { grid-row: 1 / span 3; display: grid; place-items: center; align-self: stretch; min-width: 2.2rem; border-radius: 0.5rem; background: rgb(102 212 255 / 8%); color: var(--accent); font-size: 0.7rem; font-weight: 800; }
+.storyboard-card strong { font-size: 0.76rem; }
+.storyboard-card > span:not(.scene-number) { color: var(--text-muted); font-size: 0.64rem; }
+.storyboard-card small { grid-column: 2; color: var(--text-soft); line-height: 1.35; }
+
+.scene-inspector { border: 1px solid var(--line); border-radius: var(--radius); background: rgb(4 13 20 / 45%); padding: 0.9rem; }
+.scene-inspector-heading { display: flex; justify-content: space-between; gap: 0.7rem; align-items: center; }
+.scene-inspector-heading > div:first-child { display: grid; gap: 0.15rem; }
+.scene-inspector-heading strong { font-size: 0.84rem; }
+.scene-inspector-heading span { color: var(--text-muted); font-size: 0.68rem; }
+.scene-inspector-heading > div:last-child { display: flex; gap: 0.3rem; }
+.scene-reference-chips { display: grid; gap: 0.35rem; margin-top: 0.75rem; }
+.scene-reference-chips > span { color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.scene-reference-chips > div { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.scene-reference-chips em { border: 1px solid var(--line); border-radius: 999px; padding: 0.24rem 0.48rem; color: var(--text-soft); font-size: 0.66rem; font-style: normal; }
+
+.prompt-history { display: grid; gap: 0.65rem; margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 0.85rem; }
+.prompt-history-heading { display: grid; gap: 0.15rem; }
+.prompt-history-heading strong { font-size: 0.78rem; }
+.prompt-history-heading span { color: var(--text-muted); font-size: 0.66rem; }
+.prompt-version { border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgb(255 255 255 / 2%); overflow: hidden; }
+.prompt-version summary { cursor: pointer; padding: 0.6rem 0.7rem; color: var(--text-soft); font-size: 0.68rem; }
+.prompt-version > div { display: grid; gap: 0.35rem; border-top: 1px solid var(--line); padding: 0.7rem; }
+.prompt-version strong { color: var(--accent); font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.prompt-version p { margin: 0; color: var(--text-soft); font-size: 0.7rem; line-height: 1.45; }
+.prompt-version pre { max-height: 15rem; overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--line); border-radius: 0.5rem; background: rgb(0 0 0 / 25%); padding: 0.6rem; color: var(--text-soft); font: 0.66rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.director-callout { display: grid; gap: 0.2rem; margin-top: 1rem; border: 1px dashed var(--line); border-radius: var(--radius); padding: 0.9rem; color: var(--text-soft); }
+.director-callout strong { font-size: 0.8rem; }
+.director-callout span { color: var(--text-muted); font-size: 0.7rem; }
+.director-panel button:focus-visible, .storyboard-card:focus-visible, .prompt-version summary:focus-visible { outline: 3px solid rgb(102 212 255 / 38%); outline-offset: 2px; }
+
+@media (max-width: 900px) {
+  .director-control-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .storyboard-layout { grid-template-columns: 1fr; }
+  .storyboard-cards { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); max-height: none; }
+}
+
+@media (max-width: 560px) {
+  .director-control-grid { grid-template-columns: 1fr; }
+  .arc-points, .storyboard-cards { grid-template-columns: 1fr; }
+  .scene-inspector-heading { align-items: flex-start; }
+}
