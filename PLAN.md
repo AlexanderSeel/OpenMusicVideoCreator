@@ -21,31 +21,6 @@ This file contains **unfinished work only**. Work in complete blocks. A block is
 
 ---
 
-## Block 4 — Persistent job engine and generation state machine
-
-Implement recoverable asynchronous execution before real generation workflows.
-
-### Scope
-
-- Persist jobs, attempts, dependencies, provider task IDs, timestamps, retries, errors, costs, and scheduling metadata.
-- Implement the explicit state machine from the master prompt, including waiting/retry/rejected/permanent states.
-- Implement dependency handling and parent/child generation jobs.
-- Implement background worker polling/claiming with safe concurrency.
-- Implement pause/resume/cancel/retry/restart semantics for project and scene jobs.
-- Implement retry scheduling with provider reset times/backoff where available.
-- Implement startup recovery/reconciliation for jobs left in in-progress states.
-- Implement live status stream through SSE initially; keep transport replaceable.
-- Implement provider error classification and normalization.
-
-### Acceptance
-
-- Automated tests cover legal/illegal state transitions, dependencies, retry, pause/resume, cancellation, quota wait, provider wait, restart recovery, and duplicate-worker protection.
-- Closing/restarting the backend does not lose queued/completed/failed job state.
-- Completed work is not regenerated on resume.
-- A `WaitingForQuota` job can later resume without recreating the project-generation graph.
-
----
-
 ## Block 5 — Simple Mode project creation and application shell
 
 Create the first user-facing workflow on top of durable project data.
