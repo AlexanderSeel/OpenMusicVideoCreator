@@ -47,7 +47,7 @@ public sealed class JobEngineIntegrationTests
         Assert.NotNull(restoredChild);
         Assert.Equal(JobState.Completed, restoredParent.State);
         Assert.Equal(JobState.Queued, restoredChild.State);
-        Assert.Equal(new[] { parent.Id }, dependencies);
+        Assert.Equal(parent.Id, Assert.Single(dependencies));
         Assert.Single(attempts);
         Assert.Equal(JobState.Completed, attempts[0].State);
         Assert.NotNull(attempts[0].CompletedUtc);
@@ -64,8 +64,9 @@ public sealed class JobEngineIntegrationTests
             context.Repository.TryClaimNextAsync("worker-one", now, TimeSpan.FromMinutes(1)),
             context.Repository.TryClaimNextAsync("worker-two", now, TimeSpan.FromMinutes(1)));
 
-        Assert.Single(claims.Where(claim => claim is not null));
-        Assert.Equal(job.Id, claims.Single(claim => claim is not null)!.Id);
+        var claim = Assert.Single(claims, candidate => candidate is not null);
+        Assert.NotNull(claim);
+        Assert.Equal(job.Id, claim.Id);
         Assert.Equal(JobState.Submitting, (await context.Service.GetAsync(job.Id))!.State);
         Assert.Single(await context.Service.GetAttemptsAsync(job.Id));
     }
@@ -104,7 +105,7 @@ public sealed class JobEngineIntegrationTests
         var quotaJob = await context.Service.EnqueueAsync(
             Definition("mock:quota", parentJobId: dependency.Id),
             [dependency.Id]);
-        var originalDependencies = await context.Service.GetDependenciesAsync(quotaJob.Id);
+        var originalDependency = Assert.Single(await context.Service.GetDependenciesAsync(quotaJob.Id));
 
         Assert.True(await context.Processor.ProcessNextAsync("worker", TimeSpan.FromMinutes(1)));
         Assert.Equal(JobState.WaitingForQuota, (await context.Service.GetAsync(quotaJob.Id))!.State);
@@ -113,14 +114,18 @@ public sealed class JobEngineIntegrationTests
         var restored = await recreated.Service.GetAsync(quotaJob.Id);
         Assert.NotNull(restored);
         Assert.Equal(JobState.WaitingForQuota, restored.State);
-        Assert.Equal(originalDependencies, await recreated.Service.GetDependenciesAsync(quotaJob.Id));
+        Assert.Equal(
+            originalDependency,
+            Assert.Single(await recreated.Service.GetDependenciesAsync(quotaJob.Id)));
 
         Assert.True(await recreated.Service.RetryAsync(quotaJob.Id));
         var retried = await recreated.Service.GetAsync(quotaJob.Id);
         Assert.NotNull(retried);
         Assert.Equal(quotaJob.Id, retried.Id);
         Assert.Equal(JobState.Queued, retried.State);
-        Assert.Equal(originalDependencies, await recreated.Service.GetDependenciesAsync(quotaJob.Id));
+        Assert.Equal(
+            originalDependency,
+            Assert.Single(await recreated.Service.GetDependenciesAsync(quotaJob.Id)));
     }
 
     [Fact]
