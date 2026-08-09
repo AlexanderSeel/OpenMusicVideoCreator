@@ -138,7 +138,7 @@ public static class JobStateMachine
             return true;
         }
 
-        if (explicitRestart && to == JobState.Queued && from.IsTerminal())
+        if (explicitRestart && to is JobState.Queued or JobState.WaitingForDependency)
         {
             return true;
         }
