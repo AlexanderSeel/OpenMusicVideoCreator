@@ -1,10 +1,10 @@
 # OpenMusicVideoCreator Architecture
 
-This document describes architecture that exists in the repository today. Future capabilities remain unchecked in `PLAN.md` until implemented.
+This document describes architecture implemented in the repository today. `PLAN.md` tracks implementation progress; `TESTPLAN.md` tracks validation still to execute locally.
 
 ## Deployment shape
 
-The MVP is a modular monolith / service-oriented application, not a distributed microservice system.
+The MVP remains a **modular monolith / service-oriented application**, not a distributed microservice system.
 
 ```text
 Browser
@@ -16,24 +16,24 @@ Next.js / React frontend
   v
 ASP.NET Core API host
   |
-  +--> Application
-  |      ProjectService / ProjectMediaService
-  |      SongAnalysisService
-  |      ProviderSettingsService
-  |      JobService / JobProcessor
-  |      repository, provider, media, analysis and render contracts
+  +--> Application use cases/contracts
+  |      projects + media
+  |      song analysis + lyric timing
+  |      reusable visual/asset libraries
+  |      project character continuity/state
+  |      provider configuration/capabilities
+  |      persistent job coordination
   |
-  +--> Infrastructure
-         DuckDB repositories
-         local media storage/path resolver
-         ffprobe metadata adapter
-         streaming FFmpeg signal analyzer
-         provider catalog + mock adapters
+  +--> Infrastructure adapters
+         DuckDB repositories/migrations
+         local project + global library media storage
+         ffprobe / FFmpeg signal + preview adapters
          credential resolver
-         persistent job adapters
+         mock AI providers
+         persistent job worker/change hub
 ```
 
-Logical boundaries are deliberately clean enough to split later if a real deployment/scaling requirement appears, but the current deployment remains one backend process.
+Logical boundaries can be split later only if a concrete scaling/deployment need justifies it.
 
 ## Dependency direction
 
@@ -50,63 +50,98 @@ Application <--- API
 Infrastructure <--- API
 ```
 
-Domain contains no ASP.NET Core, DuckDB, FFmpeg, filesystem, or provider SDK dependencies. Application owns interfaces and use-case coordination. Infrastructure implements external capabilities. API maps HTTP only.
+- Domain owns durable concepts/invariants only.
+- Application owns use cases and ports/interfaces.
+- Infrastructure owns DuckDB, filesystem, process execution, provider implementations, and external credentials.
+- API maps HTTP contracts to Application operations.
+- Frontend never becomes an alternative source of truth for persisted state.
 
 ## Domain
 
 Implemented domain areas include:
 
 - `MusicVideoProject` / `ProjectDraft`
-- output aspect ratio and generation preset
-- project references including durable `Song` asset references
-- media asset metadata
-- persistent generation-job state model and state machine
+- stable project references: Song, Character, Style, Location, AdditionalMedia
+- media metadata
+- explicit persistent generation-job state machine
 - versioned `SongAnalysis`
-- waveform buckets, energy points, beat markers and editable song sections
-- derived bars, four-bar phrase windows and quiet ranges
+- waveform/energy/beats/sections plus derived bars/phrases/quiet ranges
+- deliberately bounded/low-confidence `VocalActivityEstimate`
+- versioned `LyricTimingAnalysis`
+- `VisualLibraryItem` with Character/Style/Location payloads
+- `AssetLibraryEntry`
+- `ProjectCharacterState`
 
-`SongAnalysis.ValidateSections` enforces ordered, non-overlapping ranges within song duration. Edited Structure Maps create new analysis versions rather than mutating previous analysis.
+### Reusable visual library model
 
-Bars/phrases/quiet ranges are deterministic derivations from persisted beat/energy data, so redundant derived arrays do not need separate DuckDB storage.
+A project stores only stable Character/Style/Location IDs. Reusable metadata remains in the global Library.
+
+Character data includes:
+
+- reference type
+- appearance description
+- forbidden changes
+- outfits and outfit asset IDs
+- default continuity locks
+
+Style data includes prompt, camera, lighting, and animation characteristics.
+
+Location data includes environment, constraints, lighting, weather, and time of day.
+
+Project-specific character state is intentionally separate from the Character Library item. It stores selected outfit, continuity lock overrides, and normalized state values such as presence/confidence/isolation. This is the seed model for later timeline curves without making global Character metadata project-specific.
 
 ## Application
 
-Important application seams now include:
+Important ports/use cases now include:
 
 - project/settings/media repositories
 - `IMediaStorage`
-- `IMediaProbe`
-- `IAudioSignalAnalyzer`
-- `ISongAnalysisRepository`
-- provider capability interfaces
-- credential resolver/catalog
-- persistent job repository/queue/change-stream/dispatcher
+- `IMediaProbe` / `IAudioSignalAnalyzer` / `ISongAnalysisRepository`
+- `ILyricTimingRepository`
+- `IVisualLibraryRepository`
+- `IAssetLibraryRepository`
+- `IProjectCharacterStateRepository`
+- `ILibraryMediaStorage`
+- `IMediaPreviewGenerator`
+- provider capability interfaces/catalog/credentials
+- persistent job repository/queue/change stream/dispatcher
 - render-engine boundary
-
-### Project media
-
-`ProjectMediaService` attaches a song to a project using the existing media-storage abstraction. Uploads are validated for safe filename, supported extension/MIME type, non-empty content, and the configured 512 MB limit.
-
-Replacing a song creates a new media asset and changes the project `Song` reference. The previous media asset is not implicitly deleted.
 
 ### Song analysis
 
-`SongAnalysisService`:
+`SongAnalysisService` loads the authoritative Song reference, probes media, analyzes the signal, creates a new immutable analysis version, and persists editable Structure Map sections.
 
-1. loads the authoritative project `Song` reference,
-2. probes media metadata through `IMediaProbe`,
-3. analyzes the signal through `IAudioSignalAnalyzer`,
-4. creates waveform/energy/beat data and BPM estimate,
-5. proposes editable sections using energy changes and duration constraints,
-6. persists a new immutable analysis version.
+Rhythm derivatives (bars/phrases/quiet ranges) are calculated from persisted base signal data instead of stored redundantly.
 
-Saving Structure Map edits creates another version with `UserEdited` section provenance while retaining the same source analysis data.
+Vocal/instrumental activity is a heuristic energy + zero-crossing estimate with intentionally bounded low confidence. Low-information input may return no estimate rather than fabricated certainty.
+
+### Lyric timing
+
+`LyricTimingService` consumes provider-neutral timestamped transcription segments. It aligns them sequentially to the exact supplied lyric lines and persists timing/confidence separately from project lyrics.
+
+Each timing version records:
+
+- source media asset ID
+- exact SongAnalysis ID
+- SHA-256 of supplied lyrics
+- exact supplied line text
+- optional start/end suggestion and confidence
+
+Transcription never silently rewrites authoritative lyrics.
+
+### Visual Library
+
+`VisualLibraryService` owns create/update/search/filter/delete behavior and validates all referenced Asset Library IDs. Deletion is blocked while any project still references the Character/Style/Location.
+
+`AssetLibraryService` owns visual upload validation, source/preview media metadata, search/tags/favorites/source tracking, and reference-aware deletion. Removing an asset index entry intentionally does not silently delete underlying media bytes.
+
+`ProjectCharacterStateService` validates that the project actually references the Character, selected outfits belong to that Character, and state values are normalized to 0–1 before persistence.
 
 ## Infrastructure
 
 ### DuckDB
 
-DuckDB is authoritative for structured application metadata. Current schema version is **3**:
+DuckDB is authoritative for structured metadata. Current schema version is **5**.
 
 ```text
 schema_migrations
@@ -120,116 +155,138 @@ jobs
 job_dependencies
 job_attempts
 song_analyses
+lyric_timing_analyses
+library_assets
+visual_library_items
+project_character_states
 ```
 
-`song_analyses` stores source asset/version metadata plus waveform, energy, beats and sections as JSON columns. The table has a unique `(project_id, version)` constraint and project/version index.
+Schema evolution:
 
-### Media paths
+- v1 — project/settings/media foundation
+- v2 — persistent jobs/dependencies/attempts
+- v3 — versioned song analyses
+- v4 — vocal estimate + lyric timing versions
+- v5 — global visual/asset libraries + project Character state
 
-`LocalMediaPathResolver` owns the configured project-media root and path-traversal checks. `LocalMediaStorage`, ffprobe and FFmpeg reuse this single path-resolution policy instead of duplicating filesystem rules.
+Searchable library fields (kind/name/favorite) are first-class columns. Tags, typed detail payloads, asset-ID lists, continuity locks, and state maps are version-tolerant JSON columns.
 
-Large media bytes remain outside DuckDB.
+Large audio/image/video bytes never live in DuckDB.
 
-### ffprobe
+### Media storage
 
-`FfprobeMediaProbe` uses `ProcessStartInfo.ArgumentList`, never shell-command interpolation. It reads structured JSON for duration, codec, sample rate, channels and bitrate.
+`LocalMediaPathResolver` is the single root/path-traversal policy used by project storage, global library storage, ffprobe, and FFmpeg adapters.
 
-### FFmpeg signal analysis
+```text
+projectsRoot/
+  library/
+    originals/
+    previews/
+  {project-id}/
+    source/
+    references/
+    analysis/
+    keyframes/
+    generated/
+    proxies/
+    renders/
+```
 
-`FfmpegAudioSignalAnalyzer` safely invokes FFmpeg with typed process arguments and streams mono 8 kHz signed 16-bit PCM from stdout. It does not decode the complete song into memory.
+Global visual library media has `project_id = NULL` in `media_assets`; project media keeps its project association.
 
-It produces:
+### FFmpeg / ffprobe
 
-- bounded waveform buckets with minimum/maximum/RMS
-- normalized 50 ms energy points
-- local-onset beat candidates with confidence
-- BPM estimate from median beat intervals
+All process execution uses `ProcessStartInfo.ArgumentList`; no shell command string is assembled from user input.
 
-Domain inference then derives four-beat bars, four-bar phrases and quiet regions.
+Implemented uses:
 
-Vocal/instrumental classification and transcription-assisted lyric timing are not implemented yet and remain unchecked in `PLAN.md`.
+- ffprobe: authoritative audio metadata
+- FFmpeg: streaming PCM for waveform/energy/rhythm analysis
+- FFmpeg: first-frame/visual PNG preview generation with bounded output size
+
+The preview adapter resolves the source through the same safe media root and writes its result through `ILibraryMediaStorage`.
 
 ## API
 
-Current project/analysis endpoints include:
+Implemented product APIs now include:
 
 ```text
-GET    /api/projects/
-POST   /api/projects/
-GET    /api/projects/{id}
-PUT    /api/projects/{id}
-DELETE /api/projects/{id}
-GET    /api/projects/{id}/song
-POST   /api/projects/{id}/song
-GET    /api/projects/{projectId}/analysis/
-POST   /api/projects/{projectId}/analysis/
-GET    /api/projects/{projectId}/analysis/versions
-PUT    /api/projects/{projectId}/analysis/sections
+/api/projects/...
+/api/projects/{id}/song
+/api/projects/{projectId}/analysis/...
+/api/projects/{projectId}/analysis/lyrics/timing...
+/api/library/items...
+/api/library/assets...
+/api/projects/{projectId}/characters/states...
+/api/providers/...
+/api/jobs/...
 ```
 
-Provider and persistent-job APIs remain available as documented in `README.md`.
+Library deletion conflicts return referencing project/library IDs so the UI can explain why deletion is blocked instead of silently detaching references.
 
-Public enums serialize as readable strings. Frontend contracts are derived from the committed OpenAPI TypeScript snapshot.
+Public enums serialize as readable strings. The committed frontend OpenAPI snapshot remains the TypeScript contract source.
 
 ## Frontend
 
-The current frontend includes a real Simple Mode product workflow:
+Feature-oriented structure:
 
 ```text
 src/features/projects/
-  ProjectStudio.tsx       orchestration
-  ProjectSidebar.tsx      saved-project navigation
-  ProjectForm.tsx         project/song/output inputs
-  projectModel.ts         editor/request helpers
+  ProjectStudio.tsx
+  ProjectSidebar.tsx
+  ProjectForm.tsx
+  projectModel.ts
 
 src/features/analysis/
-  SongAnalysisPanel.tsx   analysis controls, waveform and Structure Map
+  SongAnalysisPanel.tsx
+
+src/features/library/
+  VisualLibraryPanel.tsx
+  VisualReferenceSelector.tsx
+  ProjectCharacterContinuity.tsx
 ```
 
-Simple Mode intentionally hides provider IDs, model IDs, seeds and raw provider JSON.
+### Project references
 
-`SongAnalysisPanel` shows:
+`VisualReferenceSelector` edits only `{ kind, referenceId }` project references. It does not copy appearance/style/location payloads into project state and preserves unrelated references such as Song.
 
-- duration/BPM/sample-rate summary
-- waveform
-- beat and bar markers
-- phrase spans
-- quiet-range shading
-- supplied lyrics lane
-- editable section labels/types/start/end boundaries
-- analysis version number
+### Library workspace
 
-The supplied project lyrics remain authoritative text; current analysis does not modify them.
+`VisualLibraryPanel` provides:
+
+- Character/Style/Location create/edit/delete
+- search/type filtering
+- favorites
+- global asset upload
+- source metadata
+- generated previews
+- reference-aware conflict messages
+
+### Character continuity
+
+`ProjectCharacterContinuity` edits project-specific outfit, continuity locks, and normalized initial state values separately from the reusable global Character definition.
+
+Simple Mode still hides provider IDs, model IDs, seeds, and raw provider JSON.
 
 ## Persistent jobs
 
-Generation job state remains persisted in DuckDB. Normal resume does not regenerate completed work. Provider task IDs survive restart and move work into reconciliation instead of blind resubmission. In-memory job change broadcasts only wake/notify clients; persisted state remains authoritative.
+Generation job state remains persisted in DuckDB. Normal resume does not regenerate completed work. Known provider task IDs survive restart and move into reconciliation instead of blind re-submission. SSE broadcasts are notifications only; persisted jobs are authoritative.
 
-## Security boundaries
+## Security / data-loss boundaries
 
-- provider secrets are references, never plaintext DuckDB/project data
-- upload filenames are validated as leaf names
-- local media paths cannot escape configured storage root
-- FFmpeg/ffprobe use argument lists rather than shell strings
-- media bytes are not stored as DuckDB blobs
-- successful generated/media assets are not silently overwritten/deleted
+- credentials are references, never plaintext project/DuckDB/export data
+- project and global library filenames are validated as safe leaf names
+- resolved media paths cannot escape the configured root
+- FFmpeg/ffprobe receive typed argument lists rather than shell strings
+- upload size/MIME/extension validation happens before accepted media becomes a library/project reference
+- project/library metadata deletion does not silently destroy underlying user media
+- successful/generated variants remain non-destructive
+- referenced Character/Style/Location/Asset entries cannot be silently deleted
 
-## Tests currently present
+## Tests and deferred execution
 
-Repository tests cover, among other areas:
+Repository-side test code covers architecture, persistence, providers, jobs, project/song behavior, analysis/versioning/rhythm/lyrics, and visual-library invariants including cross-project reuse, deletion conflicts, durable character state, and path traversal.
 
-- architecture dependency direction
-- project/persistence/media round trips
-- path traversal protection
-- project song attachment and non-destructive replacement
-- provider catalog/settings/credential non-leakage/mock failures
-- job state/retry/recovery/dependency/duplicate-claim behavior
-- versioned song-analysis persistence
-- invalid Structure Map overlap rejection
-- beat → bar → phrase inference
-- quiet-range inference
-- frontend typed API contract structure
-- Simple Mode provider-independence/accessibility structure
-- waveform/Structure Map UI structure
+Source-presence tests also protect the typed frontend contract and key Simple/Analysis/Library UI invariants.
 
-The full local repository build/typecheck/test suite has not been executed in the current environment because repository checkout/network access is unavailable. FFmpeg/ffprobe command shapes were validated locally against a generated audio fixture without using GitHub Actions.
+These tests are **not considered passed until executed**. `TESTPLAN.md` contains the local Codex validation matrix and is the sole tracker for still-unexecuted build/lint/typecheck/test/FFmpeg/browser/manual proof.
