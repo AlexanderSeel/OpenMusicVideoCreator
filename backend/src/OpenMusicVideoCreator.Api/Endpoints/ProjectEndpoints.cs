@@ -15,18 +15,24 @@ public static class ProjectEndpoints
             .WithName("ListProjects")
             .Produces<ProjectResponse[]>(StatusCodes.Status200OK);
 
-        group.MapGet("/{id:guid}", async (Guid id, ProjectService service, CancellationToken cancellationToken) =>
+        group.MapGet("/{id:guid}", async Task<IResult> (
+            Guid id,
+            ProjectService service,
+            CancellationToken cancellationToken) =>
         {
             var project = await service.GetAsync(id, cancellationToken);
-            return project is null
-                ? Results.NotFound()
-                : Results.Ok(ProjectResponse.FromDomain(project));
+            if (project is null)
+            {
+                return Results.NotFound();
+            }
+
+            return Results.Ok(ProjectResponse.FromDomain(project));
         })
             .WithName("GetProject")
             .Produces<ProjectResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
-        group.MapPost("/", async (
+        group.MapPost("/", async Task<IResult> (
             ProjectUpsertRequest request,
             ProjectService service,
             CancellationToken cancellationToken) =>
@@ -48,7 +54,7 @@ public static class ProjectEndpoints
             .Produces<ProjectResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem();
 
-        group.MapPut("/{id:guid}", async (
+        group.MapPut("/{id:guid}", async Task<IResult> (
             Guid id,
             ProjectUpsertRequest request,
             ProjectService service,
@@ -76,18 +82,23 @@ public static class ProjectEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .ProducesValidationProblem();
 
-        group.MapDelete("/{id:guid}", async (
+        group.MapDelete("/{id:guid}", async Task<IResult> (
             Guid id,
             ProjectService service,
             CancellationToken cancellationToken) =>
-            await service.DeleteAsync(id, cancellationToken)
-                ? Results.NoContent()
-                : Results.NotFound())
+        {
+            if (!await service.DeleteAsync(id, cancellationToken))
+            {
+                return Results.NotFound();
+            }
+
+            return Results.NoContent();
+        })
             .WithName("DeleteProject")
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound);
 
-        group.MapGet("/{id:guid}/export", async (
+        group.MapGet("/{id:guid}/export", async Task<IResult> (
             Guid id,
             ProjectService service,
             CancellationToken cancellationToken) =>
@@ -106,7 +117,7 @@ public static class ProjectEndpoints
             .Produces(StatusCodes.Status200OK, contentType: "application/json")
             .Produces(StatusCodes.Status404NotFound);
 
-        group.MapPost("/import", async (
+        group.MapPost("/import", async Task<IResult> (
             JsonElement document,
             ProjectService service,
             CancellationToken cancellationToken) =>
