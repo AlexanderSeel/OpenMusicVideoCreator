@@ -4,33 +4,42 @@ OpenMusicVideoCreator is an AI-assisted music-video studio built around an edita
 
 **Song → Analysis → Storyboard → Keyframes → Animated clips → Review/regenerate → Final video**
 
-The product specification is `AI_Music_Video_Studio_Master_Prompt.md`. `PLAN.md` is the checkbox-based implementation tracker.
+The product specification is `AI_Music_Video_Studio_Master_Prompt.md`.
+
+- `PLAN.md` tracks **implemented vs unfinished product work**.
+- `TESTPLAN.md` tracks **validation that still needs to be executed locally**.
+- `AGENTS.md` defines the direct-`main`, no-PR/no-GitHub-Actions-by-default development workflow.
 
 ## Current implementation
 
-The repository currently includes:
+Implemented through PLAN Block 7:
 
 - Next.js 16 + React 19 + TypeScript frontend
 - ASP.NET Core .NET 10 modular backend: Domain, Application, Infrastructure, API
-- DuckDB authoritative metadata persistence
+- DuckDB authoritative metadata persistence, currently schema version **5**
 - filesystem media storage with SHA-256 metadata and path-traversal protection
 - desktop-first Simple Mode project dashboard/editor
-- project create/reopen/edit/delete
+- project create/reopen/edit/delete and portable JSON import/export
 - song upload/attachment with non-destructive replacement
-- lyrics, storyline, meaning, visual direction, mood, genre, output target, preset, and budget inputs
-- Character/Style/Location placeholders for the later reusable-library block
 - local ffprobe metadata extraction
 - streaming FFmpeg waveform/energy analysis
-- beat candidates and BPM estimate
-- derived four-beat bars, four-bar phrases, and quiet ranges
-- versioned DuckDB song analyses
-- visible waveform, beat/bar/phrase markers, quiet shading, and supplied-lyrics lane
-- editable/versioned Structure Map section labels/types/start/end boundaries
-- provider-independent AI capability contracts, safe credential references, provider settings, and offline mock Director/Image/Video providers
+- beat/BPM detection, derived bars/phrases/quiet ranges, heuristic vocal/instrumental estimate
+- immutable/versioned song analyses and editable Structure Map
+- provider-neutral transcription-assisted lyric timing that preserves supplied lyrics exactly
+- reusable Character, Style, Location, and Asset Libraries
+- cross-project references by stable library ID rather than copied metadata
+- character appearance/forbidden changes/outfits/default continuity locks
+- style prompt/camera/lighting/animation characteristics
+- location environment/constraints/lighting/weather/time-of-day characteristics
+- global visual reference assets with tags, favorites, source tracking, and FFmpeg-generated PNG previews
+- project-specific character outfit/continuity locks plus normalized initial state values
+- reference-aware deletion: referenced library items/assets cannot be silently removed
+- provider-independent AI capability contracts, safe credential references, and offline mock Director/Image/Video providers
 - persistent asynchronous job state, dependencies, attempts, retry/wait/recovery semantics, and SSE status updates
-- typed frontend project/song/analysis/provider/job API contracts
+- typed frontend contracts for projects, analysis, libraries, providers, and jobs
+- repository-side automated test code for the implemented domains and critical invariants
 
-Still unfinished in the current song-analysis block: vocal/instrumental classification and optional transcription-assisted lyric timing. Storyboard generation, real image/video generation adapters, asset libraries, rendering, and Advanced Editor work are tracked later in `PLAN.md`.
+Storyboard/Director planning, keyframe/video generation workflows, deterministic final rendering, Advanced Editor, QA/routing/cost controls, and release hardening remain in later PLAN blocks.
 
 ## Prerequisites
 
@@ -40,7 +49,7 @@ Still unfinished in the current song-analysis block: vocal/instrumental classifi
 - Git
 - **FFmpeg + ffprobe** available on `PATH`
 
-FFmpeg/ffprobe are now runtime requirements for song analysis, not just future rendering.
+FFmpeg/ffprobe are runtime requirements for song analysis and visual-reference preview generation.
 
 ## Install
 
@@ -67,7 +76,7 @@ npm run dev:web
 
 Open `http://localhost:3000`.
 
-The frontend reads `NEXT_PUBLIC_API_BASE_URL` and defaults to `http://localhost:5100`.
+`NEXT_PUBLIC_API_BASE_URL` defaults to `http://localhost:5100`.
 
 ## Simple Mode
 
@@ -75,46 +84,46 @@ Simple Mode currently provides:
 
 - persistent project sidebar/list
 - new project, reopen, edit, save, delete
-- song upload
-- authoritative supplied lyrics
-- storyline / meaning / visual direction
-- mood / genre
-- Character / Style / Location placeholders
-- 16:9 / 9:16 / 1:1 output
-- target platform
+- song upload and authoritative supplied lyrics
+- storyline / meaning / visual direction / mood / genre
+- reusable Character / Style / Location selection
+- project-specific Character continuity/outfit/state settings
+- 16:9 / 9:16 / 1:1 output and target platform
 - Fast / Balanced / Best Quality / Cheapest / Custom presets
 - estimated and maximum budget
 - offline/error/loading/empty states
 - responsive and keyboard-focus behavior
 
-Provider IDs, model IDs, seeds, raw provider JSON, and provider-specific controls stay out of Simple Mode.
+Provider IDs, model IDs, seeds, raw provider JSON, and provider-specific controls remain outside Simple Mode.
 
 ## Song analysis
 
-After a saved project has a song attached, **Analyze song** runs completely locally:
+After a saved project has a song attached, **Analyze song** runs locally:
 
 1. `ffprobe` reads duration, codec, sample rate, channels, and bitrate.
-2. FFmpeg streams the first audio stream as mono 8 kHz signed 16-bit PCM.
-3. The backend builds bounded waveform buckets and normalized 50 ms energy points without loading the decoded song into memory.
-4. Local onset candidates produce beat markers and a BPM estimate.
-5. Persisted beats derive four-beat bars and four-bar phrases.
+2. FFmpeg streams audio as mono 8 kHz signed 16-bit PCM.
+3. The backend builds bounded waveform buckets and normalized energy windows without retaining the complete decoded song in application memory.
+4. Signal analysis produces beat candidates and a BPM estimate when sufficiently confident.
+5. Beats derive four-beat bars and four-bar phrase windows.
 6. Low-energy windows derive quiet ranges.
-7. Energy/duration changes propose editable song sections.
-8. The complete analysis is persisted as a new DuckDB version.
+7. Energy and zero-crossing characteristics produce a deliberately low-confidence vocal/instrumental activity estimate; uncertain input may return no estimate.
+8. Energy changes propose editable Structure Map sections.
+9. The analysis is persisted as an immutable DuckDB version.
 
-The UI then shows:
+Saving Structure Map edits creates another analysis version rather than overwriting history.
 
-- duration / BPM / sample rate
-- waveform
-- beat and bar markers
-- phrase bands
-- quiet shading
-- supplied lyrics lane
-- editable Structure Map
+### Lyrics timing
 
-Saving Structure Map changes creates another analysis version. Earlier versions remain available through the API.
+Supplied lyrics remain authoritative. Optional transcription data is normalized to timestamped segments and aligned to the existing lyric lines. The alignment stores:
 
-The original supplied lyrics are not rewritten by signal analysis.
+- exact supplied lyric text
+- start/end suggestions when matched
+- confidence
+- supplied-lyrics SHA-256
+- exact source media asset and song-analysis IDs
+- independent timing version
+
+Transcription output never replaces the project lyric text automatically.
 
 ### Analysis API
 
@@ -123,7 +132,76 @@ GET  /api/projects/{projectId}/analysis/
 POST /api/projects/{projectId}/analysis/
 GET  /api/projects/{projectId}/analysis/versions
 PUT  /api/projects/{projectId}/analysis/sections
+GET  /api/projects/{projectId}/analysis/lyrics/timing
+POST /api/projects/{projectId}/analysis/lyrics/timing
+GET  /api/projects/{projectId}/analysis/lyrics/timing/versions
 ```
+
+## Visual Library
+
+The Library is application-global and reusable across projects.
+
+### Character
+
+Stores:
+
+- reference type
+- appearance description
+- forbidden changes
+- outfits
+- reference assets
+- default identity/face/hair/body/age/wardrobe locks
+
+Per-project Character state is stored separately so changing one project's outfit/continuity/state does not mutate the global Character.
+
+### Style
+
+Stores reusable:
+
+- prompt
+- camera characteristics
+- lighting characteristics
+- animation characteristics
+- tags/favorite/reference assets
+
+### Location
+
+Stores reusable:
+
+- environment description
+- constraints
+- lighting
+- weather
+- time of day
+- tags/favorite/reference assets
+
+### Asset Library
+
+Image/video reference uploads are stored under the global library area, not a single project. Metadata includes tags, favorite status, source description, original media ID, and optional derived preview media ID.
+
+FFmpeg creates a bounded PNG preview using typed `ProcessStartInfo.ArgumentList` invocation. Deleting an Asset Library entry never silently deletes underlying media bytes.
+
+### Library API
+
+```text
+GET    /api/library/items
+POST   /api/library/items
+GET    /api/library/items/{id}
+PUT    /api/library/items/{id}
+DELETE /api/library/items/{id}
+
+GET    /api/library/assets
+POST   /api/library/assets
+GET    /api/library/assets/{id}
+PUT    /api/library/assets/{id}
+DELETE /api/library/assets/{id}
+GET    /api/library/assets/{id}/preview
+
+GET /api/projects/{projectId}/characters/states/
+PUT /api/projects/{projectId}/characters/states/{characterId}
+```
+
+A Character/Style/Location referenced by a project cannot be deleted until references are removed. An Asset Library entry referenced by a visual-library item is similarly protected.
 
 ## Project API
 
@@ -139,7 +217,7 @@ GET    /api/projects/{id}/export
 POST   /api/projects/import
 ```
 
-A song upload validates file size/type/name, stores the binary under the project `source/` area, stores metadata in DuckDB, and points the project `Song` reference at the new asset. Replacing the song does **not** silently delete the previous media asset.
+Projects store stable references to Song/Character/Style/Location IDs. They do not embed copies of reusable visual-library metadata.
 
 ## Persistence
 
@@ -149,6 +227,9 @@ Default layout:
 data/
   app.duckdb
 projects/
+  library/
+    originals/
+    previews/
   {project-id}/
     source/
     references/
@@ -162,7 +243,15 @@ projects/
     renders/
 ```
 
-Current DuckDB schema version is 3 and includes `song_analyses` in addition to project/media/provider/job metadata.
+DuckDB schema version 5 includes project/media/provider/job metadata plus:
+
+```text
+song_analyses
+lyric_timing_analyses
+library_assets
+visual_library_items
+project_character_states
+```
 
 Large media files are never stored as DuckDB blobs.
 
@@ -174,7 +263,7 @@ GET /api/providers/{providerId}/settings
 PUT /api/providers/{providerId}/settings
 ```
 
-Provider settings store credential references, never plaintext secret values. Current generation providers are offline mocks suitable for development without paid calls.
+Provider settings store credential references, never plaintext secret values. Current generation providers are offline mocks suitable for normal development without paid calls.
 
 ## Persistent job engine
 
@@ -216,23 +305,13 @@ With the backend running:
 npm run api:generate --workspace frontend
 ```
 
-Frontend API code derives request/response types from this schema.
+Frontend request/response types derive from that schema.
 
-## Validate
+## Validation workflow
 
-Linux/macOS:
+Implementation completion belongs in `PLAN.md`. Unexecuted validation belongs in `TESTPLAN.md`.
 
-```bash
-./scripts/validate.sh
-```
-
-PowerShell:
-
-```powershell
-./scripts/validate.ps1
-```
-
-Core commands:
+Core local commands include:
 
 ```bash
 npm run lint
@@ -244,7 +323,19 @@ dotnet build backend/OpenMusicVideoCreator.sln -c Release
 dotnet test backend/OpenMusicVideoCreator.sln -c Release
 ```
 
-In the current assistant execution environment the repository cannot be checked out because external repository DNS/network access is unavailable, so the complete local build/test suite has not been executed here. FFmpeg/ffprobe 7.1.5 command shapes were validated locally against a generated audio fixture. No GitHub Actions were used for this validation.
+Or:
+
+```bash
+./scripts/validate.sh
+```
+
+PowerShell:
+
+```powershell
+./scripts/validate.ps1
+```
+
+Do not infer success from implementation/source inspection. A local Codex run should execute `TESTPLAN.md` and check off only commands/scenarios that actually succeed.
 
 ## Repository structure
 
@@ -254,6 +345,7 @@ frontend/
   src/api/
   src/features/projects/
   src/features/analysis/
+  src/features/library/
 backend/
   src/
     OpenMusicVideoCreator.Domain/
@@ -271,8 +363,9 @@ Read before implementation work:
 
 1. `AI_Music_Video_Studio_Master_Prompt.md`
 2. `PLAN.md`
-3. `AGENTS.md`
-4. `ARCHITECTURE.md`
-5. `SKILLS.md`
+3. `TESTPLAN.md`
+4. `AGENTS.md`
+5. `ARCHITECTURE.md`
+6. `SKILLS.md`
 
-Keep modules focused, preserve provider independence, persist asynchronous state, keep generated work non-destructive, and never claim a validation step passed unless it actually executed.
+Keep modules focused, preserve provider independence, persist asynchronous state, keep user assets/generations non-destructive, work directly on `main` unless explicitly told otherwise, and never claim a validation step passed unless it actually executed.
