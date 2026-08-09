@@ -100,7 +100,12 @@ public sealed class ProjectService
         return imported;
     }
 
-    private DateTimeOffset GetUtcNow() => _timeProvider.GetUtcNow();
+    private DateTimeOffset GetUtcNow()
+    {
+        var now = _timeProvider.GetUtcNow();
+        var ticks = now.Ticks - (now.Ticks % TimeSpan.TicksPerMicrosecond);
+        return new DateTimeOffset(ticks, TimeSpan.Zero);
+    }
 }
 
 public sealed record PortableProjectDocument(int Version, MusicVideoProject Project);
