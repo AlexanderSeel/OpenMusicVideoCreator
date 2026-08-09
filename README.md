@@ -8,7 +8,7 @@ The product specification lives in `AI_Music_Video_Studio_Master_Prompt.md`. `PL
 
 ## Current implementation
 
-The repository currently contains the executable foundation plus durable project persistence:
+The repository currently contains the executable foundation, durable project persistence, and provider-independent AI seams:
 
 - Next.js 16 + React 19 + TypeScript frontend
 - ASP.NET Core .NET 10 backend
@@ -20,12 +20,18 @@ The repository currently contains the executable foundation plus durable project
 - filesystem media storage with SHA-256 metadata, path-traversal protection, and deterministic per-project directories
 - media metadata stored in DuckDB while audio/image/video bytes stay outside the database
 - project CRUD API plus portable project JSON export/import
+- provider capability interfaces for text, image, image editing, video, image-to-video, video-to-video, lip sync, upscale, transcription, vision evaluation, and Director planning
+- provider/model catalog with capability metadata instead of global hard-coded model assumptions
+- persisted provider settings for enabled state, credential reference, default models, concurrency, timeout, retries, allowed operations, priority, and fallback priority
+- environment credential resolution with opaque reference kinds reserved for OS/external secret-store adapters; resolved secret values are never returned by the API or persisted
+- normalized provider result/failure contracts covering rate limit, quota, credits/auth, rejection, invalid parameters, unsupported capability, network, timeout, transient, and permanent failures
+- offline `MockDirectorProvider`, `MockImageProvider`, and `MockVideoProvider` with controllable success/delay/failure scenarios
 - `/healthz` and `/api/system/version` bootstrap endpoints
 - JSON console logging and `X-Correlation-ID` request correlation
-- architecture, API, DuckDB, media-storage, and project round-trip integration tests
-- GitHub Actions CI for frontend and backend; direct `main` pushes publish a `ci/combined` commit status
+- architecture, API, DuckDB, media-storage, project round-trip, and provider subsystem integration tests
+- GitHub Actions CI for frontend and backend; direct `main` pushes publish detailed commit statuses plus `ci/combined`
 
-AI provider adapters, persistent generation jobs, FFmpeg rendering, music analysis, storyboard generation, and editor functionality remain unfinished and are tracked in `PLAN.md`.
+Real paid AI provider adapters, persistent generation jobs, FFmpeg rendering, music analysis, storyboard generation, and editor functionality remain unfinished and are tracked in `PLAN.md`.
 
 ## Prerequisites
 
@@ -34,7 +40,7 @@ AI provider adapters, persistent generation jobs, FFmpeg rendering, music analys
 - .NET 10 SDK
 - Git
 
-FFmpeg becomes a runtime prerequisite when the render/media-analysis blocks are implemented; it is not required for the current persistence foundation.
+FFmpeg becomes a runtime prerequisite when the render/media-analysis blocks are implemented; it is not required for the current persistence/provider foundation.
 
 ## Install
 
@@ -124,6 +130,31 @@ POST   /api/projects/import
 Deleting or changing project reference metadata does not silently delete generated media assets. Media deletion is an explicit storage operation.
 
 The export endpoint returns portable versioned project JSON. It is useful for interchange/backup, but DuckDB remains authoritative while the application is running.
+
+## Provider API and credentials
+
+Current provider endpoints:
+
+```text
+GET /api/providers/
+GET /api/providers/{providerId}/settings
+PUT /api/providers/{providerId}/settings
+```
+
+The provider catalog reports model capabilities such as references, start/end frames, seed, negative prompts, native audio, duration options, aspect ratios, resolutions, and reference limits. Frontend code can therefore query capabilities rather than embedding model assumptions.
+
+Provider settings persist only a credential **reference**. Example environment reference:
+
+```json
+{
+  "kind": "Environment",
+  "identifier": "OPENAI_API_KEY"
+}
+```
+
+The value of `OPENAI_API_KEY` is resolved only inside the credential resolver when a provider operation needs it. It is not stored in DuckDB, project exports, API responses, or logs. `OperatingSystem` and `External` reference kinds are part of the stable contract for later secret-store adapters; the current built-in resolver implements environment references only.
+
+The currently registered providers are offline mocks. They require no API keys and are intended for tests and development of later generation/job workflows.
 
 ## Typed API contracts
 
