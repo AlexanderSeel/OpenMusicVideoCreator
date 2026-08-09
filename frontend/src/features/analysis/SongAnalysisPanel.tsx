@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   analyzeSong,
+  getLyricTiming,
   getSongAnalysis,
   updateSongAnalysisSections,
+  type LyricTimingResponse,
   type SongAnalysisResponse,
   type SongSectionKind,
   type SongSectionRequest,
@@ -22,6 +24,7 @@ const sectionKinds: SongSectionKind[] = [
 
 export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnalysisPanelProps) {
   const [analysis, setAnalysis] = useState<SongAnalysisResponse | null>(null);
+  const [lyricTiming, setLyricTiming] = useState<LyricTimingResponse | null>(null);
   const [sections, setSections] = useState<SongSectionRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -31,6 +34,7 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
     const controller = new AbortController();
     if (!projectId) {
       setAnalysis(null);
+      setLyricTiming(null);
       setSections([]);
       setMessage("");
       return () => controller.abort();
@@ -38,9 +42,13 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
 
     setLoading(true);
     setMessage("");
-    getSongAnalysis(projectId, controller.signal)
-      .then((result) => {
+    Promise.all([
+      getSongAnalysis(projectId, controller.signal),
+      getLyricTiming(projectId, controller.signal),
+    ])
+      .then(([result, timing]) => {
         setAnalysis(result);
+        setLyricTiming(timing);
         setSections(result ? toSectionRequests(result) : []);
       })
       .catch((error: unknown) => {
@@ -68,7 +76,8 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
       const result = await analyzeSong(projectId);
       setAnalysis(result);
       setSections(toSectionRequests(result));
-      setMessage(`Analysis version ${result.version} created.`);
+      setLyricTiming(null);
+      setMessage(`Analysis version ${result.version} created. Existing lyric timing is treated as stale until re-aligned.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Song analysis failed.");
     } finally {
@@ -84,7 +93,8 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
       const result = await updateSongAnalysisSections(projectId, sections);
       setAnalysis(result);
       setSections(toSectionRequests(result));
-      setMessage(`Structure Map saved as version ${result.version}.`);
+      setLyricTiming(null);
+      setMessage(`Structure Map saved as version ${result.version}. Lyric timing can be re-aligned against this version.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not save Structure Map.");
     } finally {
@@ -105,6 +115,10 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
       </section>
     );
   }
+
+  const timingMatchesCurrentAnalysis = Boolean(
+    analysis && lyricTiming && lyricTiming.songAnalysisId === analysis.id,
+  );
 
   return (
     <section className="analysis-panel" aria-labelledby="analysis-heading">
@@ -137,6 +151,8 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
             <Stat label="Bars" value={analysis.bars.length.toString()} />
             <Stat label="Phrases" value={analysis.phrases.length.toString()} />
             <Stat label="Quiet ranges" value={analysis.quietRanges.length.toString()} />
+            <Stat label="Likely vocal" value={analysis.vocalActivity ? formatPercent(analysis.vocalActivity.vocalFraction) : "uncertain"} />
+            <Stat label="Likely instrumental" value={analysis.vocalActivity ? formatPercent(analysis.vocalActivity.instrumentalFraction) : "uncertain"} />
           </div>
 
           <div className="waveform-card">
@@ -152,8 +168,24 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
               <span>0:00</span><span>{formatDuration(analysis.durationSeconds / 2)}</span><span>{formatDuration(analysis.durationSeconds)}</span>
             </div>
             <div className="lyrics-lane">
-              <span>Lyrics lane</span>
+              <span>Lyrics lane · authoritative text</span>
               <p>{lyrics.trim() || "No supplied lyrics yet."}</p>
+              {timingMatchesCurrentAnalysis && lyricTiming ? (
+                <div className="lyric-timing-summary" aria-label="Transcription assisted lyric timing">
+                  <strong>Timing v{lyricTiming.version} · {formatPercent(lyricTiming.matchedFraction)} matched</strong>
+                  <span>Transcription only suggests timestamps; the lyric text above is never replaced.</span>
+                  <ul>
+                    {lyricTiming.lines.filter((line) => line.isMatched).slice(0, 8).map((line) => (
+                      <li key={line.lineNumber}>
+                        <time>{formatDuration(line.startSeconds ?? 0)}</time>
+                        <span>{line.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <small>Optional transcription timing is not available for this analysis version yet.</small>
+              )}
             </div>
           </div>
 
@@ -237,3 +269,4 @@ function toSectionRequests(analysis: SongAnalysisResponse): SongSectionRequest[]
 function round(value: number) { return Math.round(value * 10) / 10; }
 function formatDuration(seconds: number): string { const safe = Math.max(0, Math.round(seconds)); return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`; }
 function formatKind(kind: SongSectionKind): string { return kind.replace(/([a-z])([A-Z])/g, "$1 $2"); }
+function formatPercent(value: number): string { return `${Math.round(Math.Clamp ? value * 100 : value * 100)}%`; }
