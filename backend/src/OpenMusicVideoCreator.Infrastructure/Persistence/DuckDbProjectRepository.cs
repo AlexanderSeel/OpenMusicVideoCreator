@@ -270,16 +270,17 @@ public sealed class DuckDbProjectRepository : IProjectRepository
         MusicVideoProject project,
         CancellationToken cancellationToken)
     {
-        foreach (var platform in project.TargetPlatforms)
+        for (var index = 0; index < project.TargetPlatforms.Count; index++)
         {
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = """
-                INSERT INTO project_targets(project_id, platform)
-                VALUES ($project_id, $platform);
+                INSERT INTO project_targets(project_id, sort_order, platform)
+                VALUES ($project_id, $sort_order, $platform);
                 """;
             command.Parameters.Add(new DuckDBParameter("project_id", project.Id));
-            command.Parameters.Add(new DuckDBParameter("platform", platform));
+            command.Parameters.Add(new DuckDBParameter("sort_order", index));
+            command.Parameters.Add(new DuckDBParameter("platform", project.TargetPlatforms[index]));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
@@ -290,15 +291,17 @@ public sealed class DuckDbProjectRepository : IProjectRepository
         MusicVideoProject project,
         CancellationToken cancellationToken)
     {
-        foreach (var reference in project.References)
+        for (var index = 0; index < project.References.Count; index++)
         {
+            var reference = project.References[index];
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = """
-                INSERT INTO project_references(project_id, reference_kind, reference_id)
-                VALUES ($project_id, $reference_kind, $reference_id);
+                INSERT INTO project_references(project_id, sort_order, reference_kind, reference_id)
+                VALUES ($project_id, $sort_order, $reference_kind, $reference_id);
                 """;
             command.Parameters.Add(new DuckDBParameter("project_id", project.Id));
+            command.Parameters.Add(new DuckDBParameter("sort_order", index));
             command.Parameters.Add(new DuckDBParameter("reference_kind", reference.Kind.ToString()));
             command.Parameters.Add(new DuckDBParameter("reference_id", reference.ReferenceId));
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -316,7 +319,7 @@ public sealed class DuckDbProjectRepository : IProjectRepository
             SELECT platform
             FROM project_targets
             WHERE project_id = $project_id
-            ORDER BY platform;
+            ORDER BY sort_order;
             """;
         command.Parameters.Add(new DuckDBParameter("project_id", projectId));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -339,7 +342,7 @@ public sealed class DuckDbProjectRepository : IProjectRepository
             SELECT reference_kind, reference_id
             FROM project_references
             WHERE project_id = $project_id
-            ORDER BY reference_kind, reference_id;
+            ORDER BY sort_order;
             """;
         command.Parameters.Add(new DuckDBParameter("project_id", projectId));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
