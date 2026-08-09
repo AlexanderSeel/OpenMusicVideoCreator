@@ -27,13 +27,20 @@ test("frontend keeps typed project, analysis, provider, and job API contracts", 
   assert.match(schema, /"\/api\/projects\/\{projectId\}\/analysis\/"/);
   assert.match(schema, /"\/api\/projects\/\{projectId\}\/analysis\/versions"/);
   assert.match(schema, /"\/api\/projects\/\{projectId\}\/analysis\/sections"/);
+  assert.match(schema, /"\/api\/projects\/\{projectId\}\/analysis\/lyrics\/timing"/);
   assert.match(schema, /SongAnalysisResponse/);
   assert.match(schema, /SongSectionRequest/);
   assert.match(schema, /WaveformBucketResponse/);
+  assert.match(schema, /VocalActivityResponse/);
+  assert.match(schema, /LyricTimingResponse/);
+  assert.match(schema, /TranscriptionSegmentRequest/);
   assert.match(client, /getSongAnalysis/);
   assert.match(client, /analyzeSong/);
   assert.match(client, /listSongAnalysisVersions/);
   assert.match(client, /updateSongAnalysisSections/);
+  assert.match(client, /getLyricTiming/);
+  assert.match(client, /applyTranscriptionLyricTiming/);
+  assert.match(client, /listLyricTimingVersions/);
 
   assert.match(client, /paths\["\/api\/providers\/"\]/);
   assert.match(schema, /ProviderCatalogResponse/);
