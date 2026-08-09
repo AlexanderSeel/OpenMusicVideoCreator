@@ -83,6 +83,13 @@ public sealed class ProjectService
                 $"Unsupported portable project document version '{document.Version}'.");
         }
 
+        if (document.Project is null ||
+            document.Project.TargetPlatforms is null ||
+            document.Project.References is null)
+        {
+            throw new InvalidDataException("Portable project document is missing required project data.");
+        }
+
         var imported = document.Project with
         {
             TargetPlatforms = document.Project.TargetPlatforms.ToArray(),
