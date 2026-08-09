@@ -74,7 +74,10 @@ public sealed class SongAnalysisService
             signal.Energy,
             signal.Beats,
             SuggestSections(probe.DurationSeconds, signal.Energy),
-            GetUtcNow());
+            GetUtcNow())
+        {
+            VocalActivity = signal.VocalActivity,
+        };
 
         SongAnalysis.ValidateSections(analysis.DurationSeconds, analysis.Sections);
         await _analyses.UpsertAsync(analysis, cancellationToken);
