@@ -43,7 +43,8 @@ jobs:
       build_application: ${{ steps.build_application.outcome }}
       build_infrastructure: ${{ steps.build_infrastructure.outcome }}
       build_api: ${{ steps.build_api.outcome }}
-      build_tests: ${{ steps.build_tests.outcome }}
+      build_architecture_tests: ${{ steps.build_architecture_tests.outcome }}
+      build_api_tests: ${{ steps.build_api_tests.outcome }}
       architecture_tests: ${{ steps.architecture_tests.outcome }}
       system_tests: ${{ steps.system_tests.outcome }}
       project_tests: ${{ steps.project_tests.outcome }}
@@ -85,59 +86,64 @@ jobs:
         if: ${{ steps.restore.outcome == 'success' && steps.build_infrastructure.outcome == 'success' }}
         continue-on-error: true
         run: dotnet build backend/src/OpenMusicVideoCreator.Api/OpenMusicVideoCreator.Api.csproj -c Release --no-restore
-      - id: build_tests
-        name: Build Tests
+      - id: build_architecture_tests
+        name: Build architecture tests
         if: ${{ steps.restore.outcome == 'success' && steps.build_api.outcome == 'success' }}
         continue-on-error: true
-        run: dotnet build backend/OpenMusicVideoCreator.sln -c Release --no-restore
+        run: dotnet build backend/tests/OpenMusicVideoCreator.ArchitectureTests/OpenMusicVideoCreator.ArchitectureTests.csproj -c Release --no-restore
+      - id: build_api_tests
+        name: Build API tests
+        if: ${{ steps.restore.outcome == 'success' && steps.build_api.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet build backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-restore
       - id: architecture_tests
         name: Architecture tests
-        if: ${{ steps.build_tests.outcome == 'success' }}
+        if: ${{ steps.build_architecture_tests.outcome == 'success' && steps.build_api_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.ArchitectureTests/OpenMusicVideoCreator.ArchitectureTests.csproj -c Release --no-build
       - id: system_tests
         name: System API tests
-        if: ${{ steps.build_tests.outcome == 'success' }}
+        if: ${{ steps.build_api_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~SystemEndpointTests
       - id: project_tests
         name: Project API tests
-        if: ${{ steps.build_tests.outcome == 'success' }}
+        if: ${{ steps.build_api_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProjectEndpointTests
       - id: persistence_tests
         name: Persistence tests
-        if: ${{ steps.build_tests.outcome == 'success' }}
+        if: ${{ steps.build_api_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~PersistenceIntegrationTests
       - id: provider_catalog_test
         name: Provider catalog test
-        if: ${{ steps.build_tests.outcome == 'success' }}
+        if: ${{ steps.build_api_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProviderApi_ListsCapabilityDrivenMockCatalog
       - id: provider_secret_test
         name: Provider secret persistence test
-        if: ${{ steps.build_tests.outcome == 'success' }}
+        if: ${{ steps.build_api_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProviderSettings_PersistReferenceButNeverSecretValue
       - id: provider_validation_test
         name: Provider settings validation test
-        if: ${{ steps.build_tests.outcome == 'success' }}
+        if: ${{ steps.build_api_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProviderSettings_RejectUnsupportedModelCapabilityPair
       - id: provider_mock_test
         name: Mock provider behavior test
-        if: ${{ steps.build_tests.outcome == 'success' }}
+        if: ${{ steps.build_api_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~MockProviders_NormalizeSuccessDelayAndFailureScenarios
       - id: job_engine_tests
         name: Persistent job engine tests
-        if: ${{ steps.build_tests.outcome == 'success' }}
+        if: ${{ steps.build_api_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~JobEngineIntegrationTests
       - id: job_api_tests
         name: Job API and stream tests
-        if: ${{ steps.build_tests.outcome == 'success' }}
+        if: ${{ steps.build_api_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~JobApiTests
       - name: Enforce backend result
@@ -148,7 +154,8 @@ jobs:
           BUILD_APPLICATION_RESULT: ${{ steps.build_application.outcome }}
           BUILD_INFRASTRUCTURE_RESULT: ${{ steps.build_infrastructure.outcome }}
           BUILD_API_RESULT: ${{ steps.build_api.outcome }}
-          BUILD_TESTS_RESULT: ${{ steps.build_tests.outcome }}
+          BUILD_ARCH_TESTS_RESULT: ${{ steps.build_architecture_tests.outcome }}
+          BUILD_API_TESTS_RESULT: ${{ steps.build_api_tests.outcome }}
           ARCHITECTURE_RESULT: ${{ steps.architecture_tests.outcome }}
           SYSTEM_RESULT: ${{ steps.system_tests.outcome }}
           PROJECT_RESULT: ${{ steps.project_tests.outcome }}
@@ -160,10 +167,10 @@ jobs:
           JOB_ENGINE_RESULT: ${{ steps.job_engine_tests.outcome }}
           JOB_API_RESULT: ${{ steps.job_api_tests.outcome }}
         run: |
-          results="$RESTORE_RESULT $BUILD_DOMAIN_RESULT $BUILD_APPLICATION_RESULT $BUILD_INFRASTRUCTURE_RESULT $BUILD_API_RESULT $BUILD_TESTS_RESULT $ARCHITECTURE_RESULT $SYSTEM_RESULT $PROJECT_RESULT $PERSISTENCE_RESULT $PROVIDER_CATALOG_RESULT $PROVIDER_SECRET_RESULT $PROVIDER_VALIDATION_RESULT $PROVIDER_MOCK_RESULT $JOB_ENGINE_RESULT $JOB_API_RESULT"
+          results="$RESTORE_RESULT $BUILD_DOMAIN_RESULT $BUILD_APPLICATION_RESULT $BUILD_INFRASTRUCTURE_RESULT $BUILD_API_RESULT $BUILD_ARCH_TESTS_RESULT $BUILD_API_TESTS_RESULT $ARCHITECTURE_RESULT $SYSTEM_RESULT $PROJECT_RESULT $PERSISTENCE_RESULT $PROVIDER_CATALOG_RESULT $PROVIDER_SECRET_RESULT $PROVIDER_VALIDATION_RESULT $PROVIDER_MOCK_RESULT $JOB_ENGINE_RESULT $JOB_API_RESULT"
           for result in $results; do
             if [ "$result" != "success" ]; then
-              echo "Backend validation failed: restore=$RESTORE_RESULT domain=$BUILD_DOMAIN_RESULT application=$BUILD_APPLICATION_RESULT infrastructure=$BUILD_INFRASTRUCTURE_RESULT api=$BUILD_API_RESULT tests=$BUILD_TESTS_RESULT architecture=$ARCHITECTURE_RESULT system=$SYSTEM_RESULT project=$PROJECT_RESULT persistence=$PERSISTENCE_RESULT provider_catalog=$PROVIDER_CATALOG_RESULT provider_secret=$PROVIDER_SECRET_RESULT provider_validation=$PROVIDER_VALIDATION_RESULT provider_mock=$PROVIDER_MOCK_RESULT job_engine=$JOB_ENGINE_RESULT job_api=$JOB_API_RESULT"
+              echo "Backend validation failed."
               exit 1
             fi
           done
@@ -178,6 +185,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           BACKEND_RESULT: ${{ needs.backend.result }}
           RESTORE_RESULT: ${{ needs.backend.outputs.restore }}
@@ -185,7 +193,8 @@ jobs:
           BUILD_APPLICATION_RESULT: ${{ needs.backend.outputs.build_application }}
           BUILD_INFRASTRUCTURE_RESULT: ${{ needs.backend.outputs.build_infrastructure }}
           BUILD_API_RESULT: ${{ needs.backend.outputs.build_api }}
-          BUILD_TESTS_RESULT: ${{ needs.backend.outputs.build_tests }}
+          BUILD_ARCH_TESTS_RESULT: ${{ needs.backend.outputs.build_architecture_tests }}
+          BUILD_API_TESTS_RESULT: ${{ needs.backend.outputs.build_api_tests }}
           ARCHITECTURE_RESULT: ${{ needs.backend.outputs.architecture_tests }}
           SYSTEM_RESULT: ${{ needs.backend.outputs.system_tests }}
           PROJECT_RESULT: ${{ needs.backend.outputs.project_tests }}
@@ -206,7 +215,7 @@ jobs:
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "https://api.github.com/repos/$REPOSITORY/statuses/$SHA" \
-              -d "{\"state\":\"$state\",\"context\":\"$context\",\"description\":\"$description\"}"
+              -d "{\"state\":\"$state\",\"context\":\"$context\",\"description\":\"$description\",\"target_url\":\"$RUN_URL\"}"
           }
           to_state() { if [ "$1" = "success" ]; then echo success; else echo failure; fi; }
           post_status "ci/frontend" "$(to_state "$FRONTEND_RESULT")" "frontend=$FRONTEND_RESULT"
@@ -215,7 +224,8 @@ jobs:
           post_status "ci/backend/build/application" "$(to_state "$BUILD_APPLICATION_RESULT")" "application=$BUILD_APPLICATION_RESULT"
           post_status "ci/backend/build/infrastructure" "$(to_state "$BUILD_INFRASTRUCTURE_RESULT")" "infrastructure=$BUILD_INFRASTRUCTURE_RESULT"
           post_status "ci/backend/build/api" "$(to_state "$BUILD_API_RESULT")" "api=$BUILD_API_RESULT"
-          post_status "ci/backend/build/tests" "$(to_state "$BUILD_TESTS_RESULT")" "tests=$BUILD_TESTS_RESULT"
+          post_status "ci/backend/build/architecture-tests" "$(to_state "$BUILD_ARCH_TESTS_RESULT")" "architecture_tests=$BUILD_ARCH_TESTS_RESULT"
+          post_status "ci/backend/build/api-tests" "$(to_state "$BUILD_API_TESTS_RESULT")" "api_tests=$BUILD_API_TESTS_RESULT"
           post_status "ci/backend/test/architecture" "$(to_state "$ARCHITECTURE_RESULT")" "architecture=$ARCHITECTURE_RESULT"
           post_status "ci/backend/test/system" "$(to_state "$SYSTEM_RESULT")" "system=$SYSTEM_RESULT"
           post_status "ci/backend/test/project" "$(to_state "$PROJECT_RESULT")" "project=$PROJECT_RESULT"
