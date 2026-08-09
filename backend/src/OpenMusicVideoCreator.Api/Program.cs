@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Http.Features;
 using OpenMusicVideoCreator.Api.Endpoints;
 using OpenMusicVideoCreator.Api.Jobs;
 using OpenMusicVideoCreator.Api.Middleware;
@@ -15,12 +16,21 @@ using OpenMusicVideoCreator.Infrastructure.Providers;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = ProjectMediaService.MaxSongBytes;
+});
+
 builder.Logging.ClearProviders();
 builder.Logging.AddJsonConsole(options =>
 {
     options.TimestampFormat = "yyyy-MM-dd'T'HH:mm:ss.fffK";
 });
 
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = ProjectMediaService.MaxSongBytes;
+});
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
