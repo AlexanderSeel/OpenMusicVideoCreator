@@ -5,7 +5,7 @@ namespace OpenMusicVideoCreator.Infrastructure.Persistence;
 
 public sealed class DuckDbDatabase : IApplicationPersistence
 {
-    private const int CurrentSchemaVersion = 4;
+    private const int CurrentSchemaVersion = 5;
     private readonly DuckDbConnectionFactory _connections;
 
     public DuckDbDatabase(DuckDbConnectionFactory connections)
@@ -41,22 +41,24 @@ public sealed class DuckDbDatabase : IApplicationPersistence
             await ApplyVersionOneAsync(connection, cancellationToken);
             currentVersion = 1;
         }
-
         if (currentVersion < 2)
         {
             await ApplyVersionTwoAsync(connection, cancellationToken);
             currentVersion = 2;
         }
-
         if (currentVersion < 3)
         {
             await ApplyVersionThreeAsync(connection, cancellationToken);
             currentVersion = 3;
         }
-
         if (currentVersion < 4)
         {
             await ApplyVersionFourAsync(connection, cancellationToken);
+            currentVersion = 4;
+        }
+        if (currentVersion < 5)
+        {
+            await ApplyVersionFiveAsync(connection, cancellationToken);
         }
     }
 
@@ -76,18 +78,14 @@ public sealed class DuckDbDatabase : IApplicationPersistence
         }
     }
 
-    private static async Task<int> ReadSchemaVersionAsync(
-        DuckDBConnection connection,
-        CancellationToken cancellationToken)
+    private static async Task<int> ReadSchemaVersionAsync(DuckDBConnection connection, CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT COALESCE(MAX(version), 0) FROM schema_migrations;";
         return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
     }
 
-    private static async Task ApplyVersionOneAsync(
-        DuckDBConnection connection,
-        CancellationToken cancellationToken)
+    private static async Task ApplyVersionOneAsync(DuckDBConnection connection, CancellationToken cancellationToken)
     {
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
@@ -157,18 +155,13 @@ public sealed class DuckDbDatabase : IApplicationPersistence
             );
 
             CREATE INDEX idx_media_assets_project_id ON media_assets(project_id);
-
-            INSERT INTO schema_migrations(version, applied_utc)
-            VALUES (1, current_timestamp);
+            INSERT INTO schema_migrations(version, applied_utc) VALUES (1, current_timestamp);
             """;
-
         await command.ExecuteNonQueryAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private static async Task ApplyVersionTwoAsync(
-        DuckDBConnection connection,
-        CancellationToken cancellationToken)
+    private static async Task ApplyVersionTwoAsync(DuckDBConnection connection, CancellationToken cancellationToken)
     {
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
@@ -230,18 +223,13 @@ public sealed class DuckDbDatabase : IApplicationPersistence
             CREATE INDEX idx_jobs_scene_id ON jobs(scene_id);
             CREATE INDEX idx_jobs_parent_job_id ON jobs(parent_job_id);
             CREATE INDEX idx_job_dependencies_dependency ON job_dependencies(depends_on_job_id);
-
-            INSERT INTO schema_migrations(version, applied_utc)
-            VALUES (2, current_timestamp);
+            INSERT INTO schema_migrations(version, applied_utc) VALUES (2, current_timestamp);
             """;
-
         await command.ExecuteNonQueryAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private static async Task ApplyVersionThreeAsync(
-        DuckDBConnection connection,
-        CancellationToken cancellationToken)
+    private static async Task ApplyVersionThreeAsync(DuckDBConnection connection, CancellationToken cancellationToken)
     {
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
@@ -265,28 +253,20 @@ public sealed class DuckDbDatabase : IApplicationPersistence
                 created_utc TIMESTAMPTZ NOT NULL,
                 UNIQUE(project_id, version)
             );
-
-            CREATE INDEX idx_song_analyses_project_version
-            ON song_analyses(project_id, version DESC);
-
-            INSERT INTO schema_migrations(version, applied_utc)
-            VALUES (3, current_timestamp);
+            CREATE INDEX idx_song_analyses_project_version ON song_analyses(project_id, version DESC);
+            INSERT INTO schema_migrations(version, applied_utc) VALUES (3, current_timestamp);
             """;
-
         await command.ExecuteNonQueryAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private static async Task ApplyVersionFourAsync(
-        DuckDBConnection connection,
-        CancellationToken cancellationToken)
+    private static async Task ApplyVersionFourAsync(DuckDBConnection connection, CancellationToken cancellationToken)
     {
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            ALTER TABLE song_analyses
-            ADD COLUMN vocal_activity_json VARCHAR;
+            ALTER TABLE song_analyses ADD COLUMN vocal_activity_json VARCHAR;
 
             CREATE TABLE lyric_timing_analyses (
                 id UUID PRIMARY KEY,
@@ -299,14 +279,60 @@ public sealed class DuckDbDatabase : IApplicationPersistence
                 created_utc TIMESTAMPTZ NOT NULL,
                 UNIQUE(project_id, version)
             );
-
-            CREATE INDEX idx_lyric_timing_project_version
-            ON lyric_timing_analyses(project_id, version DESC);
-
-            INSERT INTO schema_migrations(version, applied_utc)
-            VALUES (4, current_timestamp);
+            CREATE INDEX idx_lyric_timing_project_version ON lyric_timing_analyses(project_id, version DESC);
+            INSERT INTO schema_migrations(version, applied_utc) VALUES (4, current_timestamp);
             """;
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
 
+    private static async Task ApplyVersionFiveAsync(DuckDBConnection connection, CancellationToken cancellationToken)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            CREATE TABLE library_assets (
+                id UUID PRIMARY KEY,
+                media_asset_id UUID NOT NULL,
+                preview_media_asset_id UUID,
+                name VARCHAR NOT NULL,
+                tags_json VARCHAR NOT NULL,
+                is_favorite BOOLEAN NOT NULL,
+                source_description VARCHAR NOT NULL,
+                created_utc TIMESTAMPTZ NOT NULL,
+                updated_utc TIMESTAMPTZ NOT NULL
+            );
+
+            CREATE TABLE visual_library_items (
+                id UUID PRIMARY KEY,
+                kind VARCHAR NOT NULL,
+                name VARCHAR NOT NULL,
+                description VARCHAR NOT NULL,
+                tags_json VARCHAR NOT NULL,
+                is_favorite BOOLEAN NOT NULL,
+                asset_entry_ids_json VARCHAR NOT NULL,
+                payload_json VARCHAR NOT NULL,
+                created_utc TIMESTAMPTZ NOT NULL,
+                updated_utc TIMESTAMPTZ NOT NULL
+            );
+
+            CREATE TABLE project_character_states (
+                project_id UUID NOT NULL,
+                character_id UUID NOT NULL,
+                outfit_id UUID,
+                locks_json VARCHAR NOT NULL,
+                state_values_json VARCHAR NOT NULL,
+                updated_utc TIMESTAMPTZ NOT NULL,
+                PRIMARY KEY (project_id, character_id)
+            );
+
+            CREATE INDEX idx_library_assets_favorite_name ON library_assets(is_favorite, name);
+            CREATE INDEX idx_visual_library_kind_favorite_name ON visual_library_items(kind, is_favorite, name);
+            CREATE INDEX idx_project_character_states_project ON project_character_states(project_id);
+
+            INSERT INTO schema_migrations(version, applied_utc) VALUES (5, current_timestamp);
+            """;
         await command.ExecuteNonQueryAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
