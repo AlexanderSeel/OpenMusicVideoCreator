@@ -20,7 +20,7 @@ public sealed record ProviderCatalogResponse(
 public sealed record ProviderModelResponse(
     string ModelId,
     string DisplayName,
-    IReadOnlySet<ProviderCapability> Capabilities,
+    IReadOnlyList<ProviderCapability> Capabilities,
     bool SupportsReferences,
     bool SupportsStartFrame,
     bool SupportsEndFrame,
@@ -35,7 +35,7 @@ public sealed record ProviderModelResponse(
     public static ProviderModelResponse FromDomain(ProviderModelDescriptor model) => new(
         model.ModelId,
         model.DisplayName,
-        model.Capabilities,
+        model.Capabilities.OrderBy(capability => capability).ToArray(),
         model.SupportsReferences,
         model.SupportsStartFrame,
         model.SupportsEndFrame,
@@ -56,7 +56,7 @@ public sealed record ProviderSettingsResponse(
     int MaxConcurrency,
     double TimeoutSeconds,
     int MaxRetries,
-    IReadOnlySet<ProviderCapability> AllowedOperations,
+    IReadOnlyList<ProviderCapability> AllowedOperations,
     int Priority,
     int FallbackPriority)
 {
@@ -68,7 +68,7 @@ public sealed record ProviderSettingsResponse(
         settings.MaxConcurrency,
         settings.Timeout.TotalSeconds,
         settings.MaxRetries,
-        settings.AllowedOperations,
+        settings.AllowedOperations.OrderBy(capability => capability).ToArray(),
         settings.Priority,
         settings.FallbackPriority);
 }
@@ -80,7 +80,7 @@ public sealed record ProviderSettingsRequest(
     int MaxConcurrency,
     double TimeoutSeconds,
     int MaxRetries,
-    IReadOnlySet<ProviderCapability> AllowedOperations,
+    IReadOnlyList<ProviderCapability> AllowedOperations,
     int Priority,
     int FallbackPriority)
 {
@@ -92,7 +92,7 @@ public sealed record ProviderSettingsRequest(
         MaxConcurrency,
         TimeSpan.FromSeconds(TimeoutSeconds),
         MaxRetries,
-        AllowedOperations,
+        AllowedOperations.ToHashSet(),
         Priority,
         FallbackPriority);
 }
