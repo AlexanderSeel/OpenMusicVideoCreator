@@ -5,7 +5,7 @@ import test from "node:test";
 const clientPath = new URL("../src/api/client.ts", import.meta.url);
 const schemaPath = new URL("../src/api/schema.d.ts", import.meta.url);
 
-test("frontend keeps typed bootstrap and project API contracts", async () => {
+test("frontend keeps typed bootstrap, project, and provider API contracts", async () => {
   const [client, schema] = await Promise.all([
     readFile(clientPath, "utf8"),
     readFile(schemaPath, "utf8"),
@@ -17,4 +17,9 @@ test("frontend keeps typed bootstrap and project API contracts", async () => {
   assert.match(schema, /"\/api\/projects\/"/);
   assert.match(schema, /ProjectUpsertRequest/);
   assert.match(schema, /ProjectResponse/);
+  assert.match(client, /paths\["\/api\/providers\/"\]/);
+  assert.match(client, /\/api\/providers\//);
+  assert.match(schema, /ProviderCatalogResponse/);
+  assert.match(schema, /ProviderSettingsRequest/);
+  assert.match(schema, /ProviderCapability/);
 });
