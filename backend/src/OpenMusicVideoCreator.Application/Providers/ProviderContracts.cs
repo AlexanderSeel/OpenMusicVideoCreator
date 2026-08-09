@@ -1,4 +1,5 @@
 using OpenMusicVideoCreator.Application.Abstractions;
+using OpenMusicVideoCreator.Domain.Planning;
 
 namespace OpenMusicVideoCreator.Application.Providers;
 
@@ -209,8 +210,71 @@ public interface IVisionEvaluationProvider
     Task<ProviderResult<VisionEvaluationResponse>> EvaluateAsync(VisionEvaluationRequest request, CancellationToken cancellationToken = default);
 }
 
-public sealed record DirectorRequest(string ModelId, string Prompt, TimeSpan SongDuration);
-public sealed record DirectorResponse(string PlanJson);
+public sealed record DirectorMusicalSection(
+    Guid Id,
+    string Label,
+    string Kind,
+    double StartSeconds,
+    double EndSeconds,
+    double Confidence);
+
+public sealed record DirectorPhraseContext(
+    int Number,
+    double StartSeconds,
+    double EndSeconds,
+    double Confidence);
+
+public sealed record DirectorReferenceContext(
+    Guid Id,
+    string Name,
+    string Description,
+    IReadOnlyList<string> Tags,
+    string ContinuityContext);
+
+public sealed record DirectorRequest(
+    string ModelId,
+    Guid ProjectId,
+    Guid SongAnalysisId,
+    TimeSpan SongDuration,
+    string Lyrics,
+    string Storyline,
+    string Meaning,
+    string VisualDirection,
+    string Mood,
+    string Genre,
+    DirectorControls Controls,
+    IReadOnlyList<DirectorMusicalSection> Sections,
+    IReadOnlyList<DirectorPhraseContext> Phrases,
+    IReadOnlyList<DirectorReferenceContext> Characters,
+    IReadOnlyList<DirectorReferenceContext> Styles,
+    IReadOnlyList<DirectorReferenceContext> Locations);
+
+public sealed record DirectorVisualArcCandidate(
+    double TimeSeconds,
+    string Label,
+    string Description,
+    double EmotionalIntensity,
+    double VisualIntensity,
+    double CameraEnergy);
+
+public sealed record DirectorSceneCandidate(
+    double StartSeconds,
+    double EndSeconds,
+    string Title,
+    string Intent,
+    string Action,
+    string Environment,
+    string Camera,
+    string TransitionIn,
+    IReadOnlyList<Guid> CharacterIds,
+    IReadOnlyList<Guid> StyleIds,
+    IReadOnlyList<Guid> LocationIds);
+
+public sealed record DirectorResponse(
+    string Summary,
+    IReadOnlyList<DirectorVisualArcCandidate> VisualArc,
+    IReadOnlyList<DirectorSceneCandidate> Scenes);
+
 public interface IDirectorProvider
 {
     Task<ProviderResult<DirectorResponse>> PlanAsync(DirectorRequest request, CancellationToken cancellationToken = default);
