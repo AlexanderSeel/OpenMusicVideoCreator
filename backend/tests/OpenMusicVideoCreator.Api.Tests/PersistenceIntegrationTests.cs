@@ -52,7 +52,7 @@ public sealed class PersistenceIntegrationTests
     {
         using var storage = new TemporaryStorage();
         var persistence = await CreatePersistenceAsync(storage.Options);
-        var mediaStorage = new LocalMediaStorage(storage.Options);
+        var mediaStorage = CreateMediaStorage(storage.Options);
         var project = CreateProject();
         await persistence.Projects.UpsertAsync(project);
 
@@ -147,12 +147,15 @@ public sealed class PersistenceIntegrationTests
     public async Task MediaStorage_RejectsPathTraversalFileNames()
     {
         using var storage = new TemporaryStorage();
-        var mediaStorage = new LocalMediaStorage(storage.Options);
+        var mediaStorage = CreateMediaStorage(storage.Options);
         await using var source = new MemoryStream([1, 2, 3]);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             mediaStorage.SaveAsync(Guid.NewGuid(), MediaStorageArea.Source, source, "../escape.mp3"));
     }
+
+    private static LocalMediaStorage CreateMediaStorage(StorageOptions options) =>
+        new(new LocalMediaPathResolver(options));
 
     private static async Task<PersistenceSet> CreatePersistenceAsync(StorageOptions options)
     {
