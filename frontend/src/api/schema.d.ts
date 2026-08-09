@@ -46,6 +46,23 @@ export interface paths {
       };
     };
   };
+  "/api/projects/{id}/song": {
+    get: {
+      parameters: { path: { id: string } };
+      responses: {
+        200: { content: { "application/json": components["schemas"]["ProjectSongResponse"] } };
+        404: { content?: never };
+      };
+    };
+    post: {
+      parameters: { path: { id: string } };
+      responses: {
+        200: { content: { "application/json": components["schemas"]["ProjectSongResponse"] } };
+        400: { content?: unknown };
+        404: { content?: never };
+      };
+    };
+  };
   "/api/projects/{id}/export": {
     get: {
       parameters: { path: { id: string } };
@@ -187,7 +204,7 @@ export interface components {
     };
     ProjectAspectRatio: "Landscape16x9" | "Portrait9x16" | "Square1x1";
     GenerationPreset: "Fast" | "Balanced" | "BestQuality" | "Cheapest" | "Custom";
-    ProjectReferenceKind: "Character" | "Style" | "Location" | "AdditionalMedia";
+    ProjectReferenceKind: "Song" | "Character" | "Style" | "Location" | "AdditionalMedia";
     ProjectReferenceRequest: {
       kind: components["schemas"]["ProjectReferenceKind"];
       referenceId: string;
@@ -234,6 +251,13 @@ export interface components {
       references: components["schemas"]["ProjectReferenceResponse"][];
       createdUtc: string;
       updatedUtc: string;
+    };
+    ProjectSongResponse: {
+      assetId: string;
+      mimeType: string;
+      fileSize: number;
+      checksumSha256: string;
+      createdUtc: string;
     };
     ProviderCapability:
       | "TextGeneration"
