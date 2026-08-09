@@ -18,6 +18,7 @@ public enum GenerationPreset
 
 public enum ProjectReferenceKind
 {
+    Song,
     Character,
     Style,
     Location,
