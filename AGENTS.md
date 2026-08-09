@@ -3,19 +3,31 @@
 Read these files before changing implementation:
 
 1. `AI_Music_Video_Studio_Master_Prompt.md` — product/domain source of truth.
-2. `PLAN.md` — unfinished implementation work only.
-3. `ARCHITECTURE.md` and `README.md` when they exist.
-4. `SKILLS.md` for project-relevant agent skills.
+2. `PLAN.md` — implementation progress and next unfinished work.
+3. `TESTPLAN.md` — deferred executable validation for local/Codex runs.
+4. `ARCHITECTURE.md` and `README.md`.
+5. `SKILLS.md` for project-relevant agent skills.
 
-## Work style
+## Repository workflow
 
+- Work directly on `main` unless the user explicitly requests a branch or pull request.
+- Do not create a pull request unless the user explicitly asks for one.
+- Do not use GitHub Actions, inspect workflow results, or treat Actions as a validation mechanism unless the user explicitly asks for it.
 - Work autonomously from the next meaningful unfinished `PLAN.md` block when the task is clear.
-- Implement **complete blocks/coherent vertical slices**, not a stream of tiny unrelated changes.
-- A block is complete only when implementation, tests, documentation, and repository-side acceptance criteria are complete.
-- Remove completed work from `PLAN.md`; do not leave checked-off history there.
-- Never delete a PLAN item merely because code was started.
+- Implement complete blocks/coherent vertical slices, not a stream of tiny unrelated changes.
 - Keep changes tightly scoped to the active block.
-- Prefer simple solutions that satisfy the real requirement over speculative infrastructure.
+- Prefer simple solutions that satisfy the actual requirement over speculative infrastructure.
+
+## PLAN vs TESTPLAN
+
+- `PLAN.md` is the **implementation tracker**. Keep completed implementation visible with `[x]`; unfinished implementation stays `[ ]`.
+- An implementation checkbox may be closed when the code, repository-side automated tests, contracts, and documentation for that item are present by source inspection.
+- Do **not** keep an implementation item open only because the current agent environment cannot execute the repository.
+- `TESTPLAN.md` is the **execution/verification tracker**. Any build, lint, typecheck, unit/integration/E2E, FFmpeg, browser, restart, provider, security, performance, or manual smoke check that has not actually run belongs there as `[ ]`.
+- When a validation command cannot be run, add or update the corresponding `TESTPLAN.md` item and continue implementation.
+- Never mark a `TESTPLAN.md` item `[x]` or claim a command passed unless it actually executed successfully.
+- When local Codex later runs `TESTPLAN.md`, it should mark successful checks `[x]`, leave failures unchecked, and record concise failure details/follow-up work.
+- A failed deferred test may reopen/add a `PLAN.md` implementation item when it reveals a real code defect or missing behavior.
 
 ## Clean-code rules
 
@@ -39,7 +51,7 @@ Read these files before changing implementation:
 - All generation/editing is non-destructive. New generations create versions/variants and the selected variant is a reference.
 - Preserve the original uploaded song. Rendering consumes it; editing does not mutate it.
 - DuckDB stores structured metadata, not large audio/image/video blobs.
-- Media operations use a typed FFmpeg/ffprobe abstraction. Never build shell command strings from untrusted input.
+- Media operations use typed FFmpeg/ffprobe abstractions. Never build shell command strings from untrusted input.
 - Credential values must not be stored in DuckDB, source control, project exports, logs, or API responses.
 
 ## Frontend rules
@@ -48,7 +60,7 @@ Read these files before changing implementation:
 - Keep Simple Mode approachable; provider IDs, seeds, raw JSON, retry thresholds, and model-specific settings belong in Advanced/Expert UI.
 - Prefer server/domain state from the backend as the source of truth for persisted project/generation state.
 - Keep timeline/storyboard rendering efficient for tens of scenes and many assets; avoid rerendering the whole editor for local scene changes.
-- Keyboard interaction, focus visibility, labels, reduced-motion behavior, and usable tablet layouts are part of acceptance, not polish.
+- Keyboard interaction, focus visibility, labels, reduced-motion behavior, and usable tablet layouts are implementation requirements, not optional polish.
 
 ## Backend rules
 
@@ -63,17 +75,19 @@ Read these files before changing implementation:
 
 ## Tests and validation
 
-- Every repository-side behavior that can reasonably be automated should be covered.
+- Every repository-side behavior that can reasonably be automated should have automated test code added with the implementation.
 - Use real temporary DuckDB databases for persistence integration tests.
 - Mock paid AI providers for normal tests.
-- Mock providers must cover: success, delayed completion, rate limiting, quota exhaustion, rejection, transient failure, permanent failure, and provider-side queued jobs.
-- Test state transitions, recovery after restart, pause/resume, retries, dependency handling, prompt versioning, cost caps, and scene-level regeneration.
-- Media/render tests should verify produced metadata with ffprobe when FFmpeg is available in CI.
+- Mock providers cover success, delayed completion, rate limiting, quota exhaustion, rejection, transient failure, permanent failure, and provider-side queued jobs.
+- Test state transitions, recovery after restart, pause/resume, retries, dependency handling, prompt versioning, cost caps, and scene-level regeneration as those capabilities are implemented.
+- Media/render tests should verify produced metadata with ffprobe when FFmpeg is available locally.
+- If execution is unavailable, record the exact runnable validation in `TESTPLAN.md` instead of blocking implementation.
 - Never claim a command passed unless it actually executed successfully.
 
 ## Documentation discipline
 
-- `PLAN.md`: unfinished work only.
+- `PLAN.md`: implementation progress with checkboxes; completed items remain visible.
+- `TESTPLAN.md`: deferred local/Codex validation with checkboxes and commands/scenarios.
 - `ARCHITECTURE.md`: actual architecture and important decisions, not aspirational marketing.
 - `README.md`: current setup, prerequisites, start/test/build commands, supported capabilities.
 - Add ADRs only for decisions that are expensive to reverse or materially affect boundaries/data/contracts.
