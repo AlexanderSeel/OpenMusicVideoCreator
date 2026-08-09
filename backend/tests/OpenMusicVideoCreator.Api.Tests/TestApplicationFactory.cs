@@ -21,6 +21,7 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
             {
                 ["Storage:DatabasePath"] = Path.Combine(_tempRoot, "data", "app.duckdb"),
                 ["Storage:ProjectsRoot"] = Path.Combine(_tempRoot, "projects"),
+                ["Jobs:WorkerEnabled"] = "false",
             });
         });
     }
