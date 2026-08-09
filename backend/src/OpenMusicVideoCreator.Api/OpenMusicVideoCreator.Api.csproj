@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>OpenMusicVideoCreator.Api</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenMusicVideoCreator.Application\OpenMusicVideoCreator.Application.csproj" />
+    <ProjectReference Include="..\OpenMusicVideoCreator.Infrastructure\OpenMusicVideoCreator.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+  </ItemGroup>
+</Project>

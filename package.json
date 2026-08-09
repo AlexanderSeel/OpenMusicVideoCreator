@@ -1,0 +1,19 @@
+{
+  "name": "open-music-video-creator",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace frontend",
+    "lint": "npm run lint --workspace frontend",
+    "typecheck": "npm run typecheck --workspace frontend",
+    "test:frontend": "npm run test --workspace frontend",
+    "test:backend": "dotnet test backend/OpenMusicVideoCreator.sln -c Release",
+    "test": "npm run test:frontend && npm run test:backend",
+    "build:frontend": "npm run build --workspace frontend",
+    "build:backend": "dotnet build backend/OpenMusicVideoCreator.sln -c Release",
+    "build": "npm run build:frontend && npm run build:backend"
+  }
+}
