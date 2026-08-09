@@ -11,6 +11,7 @@ import {
   type ProjectResponse,
   type ProjectSongResponse,
 } from "@/src/api/client";
+import { SongAnalysisPanel } from "@/src/features/analysis/SongAnalysisPanel";
 import { ProjectForm } from "./ProjectForm";
 import { ProjectSidebar } from "./ProjectSidebar";
 import {
@@ -190,6 +191,12 @@ export function ProjectStudio() {
           onSongSelected={setSelectedSong}
           onSubmit={save}
           onDelete={() => void removeCurrentProject()}
+        />
+
+        <SongAnalysisPanel
+          projectId={editor.id}
+          songAttached={song !== null}
+          lyrics={editor.lyrics}
         />
       </section>
     </main>
