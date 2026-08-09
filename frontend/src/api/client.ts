@@ -9,6 +9,8 @@ export type ProjectSongResponse = components["schemas"]["ProjectSongResponse"];
 export type SongAnalysisResponse = components["schemas"]["SongAnalysisResponse"];
 export type SongSectionRequest = components["schemas"]["SongSectionRequest"];
 export type SongSectionKind = components["schemas"]["SongSectionKind"];
+export type TranscriptionSegmentRequest = components["schemas"]["TranscriptionSegmentRequest"];
+export type LyricTimingResponse = components["schemas"]["LyricTimingResponse"];
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5100";
 
@@ -162,5 +164,46 @@ export async function updateSongAnalysisSections(
       body: JSON.stringify(sections),
     }),
     "Structure Map update",
+  );
+}
+
+export async function getLyricTiming(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<LyricTimingResponse | null> {
+  const response = await fetch(`${apiBaseUrl}/api/projects/${projectId}/analysis/lyrics/timing`, {
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  return readJson<LyricTimingResponse>(response, "Lyric timing request");
+}
+
+export async function applyTranscriptionLyricTiming(
+  projectId: string,
+  segments: TranscriptionSegmentRequest[],
+): Promise<LyricTimingResponse> {
+  return readJson<LyricTimingResponse>(
+    await fetch(`${apiBaseUrl}/api/projects/${projectId}/analysis/lyrics/timing`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(segments),
+    }),
+    "Lyric timing alignment",
+  );
+}
+
+export async function listLyricTimingVersions(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<LyricTimingResponse[]> {
+  return readJson<LyricTimingResponse[]>(
+    await fetch(`${apiBaseUrl}/api/projects/${projectId}/analysis/lyrics/timing/versions`, {
+      headers: { Accept: "application/json" },
+      signal,
+    }),
+    "Lyric timing history",
   );
 }
