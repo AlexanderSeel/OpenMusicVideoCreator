@@ -21,37 +21,6 @@ This file contains **unfinished work only**. Work in complete blocks. A block is
 
 ---
 
-## Block 1 — Repository foundation and executable skeleton
-
-Create the initial monorepo/application skeleton and architectural seams before product features.
-
-### Scope
-
-- Create a Next.js + React + TypeScript frontend workspace.
-- Create an ASP.NET Core backend solution with clear layers:
-  - Domain
-  - Application
-  - Infrastructure
-  - API/Host
-- Establish provider, persistence, media-storage, job, and rendering interfaces in the correct layers without prematurely implementing vendors.
-- Establish a typed API contract strategy between frontend and backend.
-- Add configuration conventions for development/test/production.
-- Add structured logging and correlation IDs for project/job/provider operations.
-- Add repository-level formatting, linting, type-checking, build, and test commands.
-- Create `README.md` with local prerequisites and startup commands.
-- Create `ARCHITECTURE.md` documenting boundaries, dependency direction, deployment shape, persistence, media storage, jobs, providers, and rendering.
-- Add baseline CI that builds and tests frontend/backend without paid APIs.
-
-### Acceptance
-
-- Fresh clone can restore dependencies and start frontend/backend locally.
-- Frontend can call a backend health/version endpoint through the typed API path.
-- Backend dependency direction is enforced by project references/tests where practical.
-- CI executes frontend lint/typecheck/tests/build and backend restore/build/tests.
-- `README.md` and `ARCHITECTURE.md` describe the actual repository rather than intended future state.
-
----
-
 ## Block 2 — Persistence, project domain, and media storage
 
 Implement the durable project foundation using DuckDB for metadata and files/object storage for media.
