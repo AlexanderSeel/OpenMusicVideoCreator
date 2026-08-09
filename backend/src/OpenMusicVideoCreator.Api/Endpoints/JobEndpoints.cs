@@ -27,7 +27,9 @@ public static class JobEndpoints
             CancellationToken cancellationToken) =>
         {
             var job = await service.GetAsync(id, cancellationToken);
-            return job is null ? Results.NotFound() : Results.Ok(JobResponse.FromDomain(job));
+            return job is null
+                ? (IResult)Results.NotFound()
+                : Results.Ok(JobResponse.FromDomain(job));
         })
             .WithName("GetJob")
             .Produces<JobResponse>(StatusCodes.Status200OK)
@@ -77,7 +79,9 @@ public static class JobEndpoints
                     request.ToDefinition(),
                     request.Dependencies ?? [],
                     cancellationToken);
-                return Results.Created($"/api/jobs/{job.Id}", JobResponse.FromDomain(job));
+                return (IResult)Results.Created(
+                    $"/api/jobs/{job.Id}",
+                    JobResponse.FromDomain(job));
             }
             catch (ArgumentException exception)
             {
@@ -171,7 +175,7 @@ public static class JobEndpoints
             }
 
             return await action(service, id, cancellationToken)
-                ? Results.Ok()
+                ? (IResult)Results.Ok()
                 : Results.Conflict();
         });
     }
