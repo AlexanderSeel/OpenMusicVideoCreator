@@ -5,14 +5,7 @@ type ProviderCatalogResponse = paths["/api/providers/"]["get"]["responses"][200]
 type JobListResponse = paths["/api/jobs/"]["get"]["responses"][200]["content"]["application/json"];
 export type ProjectResponse = components["schemas"]["ProjectResponse"];
 export type ProjectUpsertRequest = components["schemas"]["ProjectUpsertRequest"];
-
-export interface ProjectSongResponse {
-  assetId: string;
-  mimeType: string;
-  fileSize: number;
-  checksumSha256: string;
-  createdUtc: string;
-}
+export type ProjectSongResponse = components["schemas"]["ProjectSongResponse"];
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5100";
 
