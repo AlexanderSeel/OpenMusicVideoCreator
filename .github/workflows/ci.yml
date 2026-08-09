@@ -42,7 +42,10 @@ jobs:
     outputs:
       restore: ${{ steps.restore.outcome }}
       build: ${{ steps.build.outcome }}
-      test: ${{ steps.test.outcome }}
+      architecture_tests: ${{ steps.architecture_tests.outcome }}
+      system_tests: ${{ steps.system_tests.outcome }}
+      project_tests: ${{ steps.project_tests.outcome }}
+      persistence_tests: ${{ steps.persistence_tests.outcome }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,21 +66,47 @@ jobs:
         continue-on-error: true
         run: dotnet build backend/OpenMusicVideoCreator.sln -c Release --no-restore
 
-      - id: test
-        name: Test
+      - id: architecture_tests
+        name: Architecture tests
         if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
         continue-on-error: true
-        run: dotnet test backend/OpenMusicVideoCreator.sln -c Release --no-build
+        run: dotnet test backend/tests/OpenMusicVideoCreator.ArchitectureTests/OpenMusicVideoCreator.ArchitectureTests.csproj -c Release --no-build
+
+      - id: system_tests
+        name: System API tests
+        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~SystemEndpointTests
+
+      - id: project_tests
+        name: Project API tests
+        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProjectEndpointTests
+
+      - id: persistence_tests
+        name: Persistence tests
+        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~PersistenceIntegrationTests
 
       - name: Enforce backend result
         if: ${{ always() }}
         env:
           RESTORE_RESULT: ${{ steps.restore.outcome }}
           BUILD_RESULT: ${{ steps.build.outcome }}
-          TEST_RESULT: ${{ steps.test.outcome }}
+          ARCHITECTURE_RESULT: ${{ steps.architecture_tests.outcome }}
+          SYSTEM_RESULT: ${{ steps.system_tests.outcome }}
+          PROJECT_RESULT: ${{ steps.project_tests.outcome }}
+          PERSISTENCE_RESULT: ${{ steps.persistence_tests.outcome }}
         run: |
-          if [ "$RESTORE_RESULT" != "success" ] || [ "$BUILD_RESULT" != "success" ] || [ "$TEST_RESULT" != "success" ]; then
-            echo "Backend validation failed: restore=$RESTORE_RESULT build=$BUILD_RESULT test=$TEST_RESULT"
+          if [ "$RESTORE_RESULT" != "success" ] || \
+             [ "$BUILD_RESULT" != "success" ] || \
+             [ "$ARCHITECTURE_RESULT" != "success" ] || \
+             [ "$SYSTEM_RESULT" != "success" ] || \
+             [ "$PROJECT_RESULT" != "success" ] || \
+             [ "$PERSISTENCE_RESULT" != "success" ]; then
+            echo "Backend validation failed: restore=$RESTORE_RESULT build=$BUILD_RESULT architecture=$ARCHITECTURE_RESULT system=$SYSTEM_RESULT project=$PROJECT_RESULT persistence=$PERSISTENCE_RESULT"
             exit 1
           fi
 
@@ -97,7 +126,10 @@ jobs:
           BACKEND_RESULT: ${{ needs.backend.result }}
           RESTORE_RESULT: ${{ needs.backend.outputs.restore }}
           BUILD_RESULT: ${{ needs.backend.outputs.build }}
-          TEST_RESULT: ${{ needs.backend.outputs.test }}
+          ARCHITECTURE_RESULT: ${{ needs.backend.outputs.architecture_tests }}
+          SYSTEM_RESULT: ${{ needs.backend.outputs.system_tests }}
+          PROJECT_RESULT: ${{ needs.backend.outputs.project_tests }}
+          PERSISTENCE_RESULT: ${{ needs.backend.outputs.persistence_tests }}
         run: |
           post_status() {
             local context="$1"
@@ -120,12 +152,18 @@ jobs:
           backend_state=$(to_state "$BACKEND_RESULT")
           restore_state=$(to_state "$RESTORE_RESULT")
           build_state=$(to_state "$BUILD_RESULT")
-          test_state=$(to_state "$TEST_RESULT")
+          architecture_state=$(to_state "$ARCHITECTURE_RESULT")
+          system_state=$(to_state "$SYSTEM_RESULT")
+          project_state=$(to_state "$PROJECT_RESULT")
+          persistence_state=$(to_state "$PERSISTENCE_RESULT")
 
           post_status "ci/frontend" "$frontend_state" "frontend=$FRONTEND_RESULT"
           post_status "ci/backend/restore" "$restore_state" "restore=$RESTORE_RESULT"
           post_status "ci/backend/build" "$build_state" "build=$BUILD_RESULT"
-          post_status "ci/backend/test" "$test_state" "test=$TEST_RESULT"
+          post_status "ci/backend/test/architecture" "$architecture_state" "architecture=$ARCHITECTURE_RESULT"
+          post_status "ci/backend/test/system" "$system_state" "system=$SYSTEM_RESULT"
+          post_status "ci/backend/test/project" "$project_state" "project=$PROJECT_RESULT"
+          post_status "ci/backend/test/persistence" "$persistence_state" "persistence=$PERSISTENCE_RESULT"
           post_status "ci/backend" "$backend_state" "backend=$BACKEND_RESULT"
 
           combined_state=success
