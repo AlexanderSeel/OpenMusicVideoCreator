@@ -86,8 +86,8 @@ public sealed class ProviderSubsystemTests : IClassFixture<TestApplicationFactor
             Assert.Contains(environmentName, responseBody, StringComparison.Ordinal);
 
             var applicationSettings = _factory.Services.GetRequiredService<IApplicationSettingsRepository>();
-            var persisted = await applicationSettings.GetAsync($"providers.settings.{MockImageProvider.ProviderId}");
-            Assert.NotNull(persisted);
+            var persisted = await applicationSettings.GetAsync($"providers.settings.{MockImageProvider.ProviderId}")
+                ?? throw new InvalidOperationException("Provider settings were not persisted.");
             Assert.Contains(environmentName, persisted, StringComparison.Ordinal);
             Assert.DoesNotContain(secretValue, persisted, StringComparison.Ordinal);
 
