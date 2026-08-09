@@ -78,9 +78,11 @@ builder.Services.AddSingleton<ProjectService>();
 builder.Services.AddSingleton<ProjectMediaService>();
 
 builder.Services.AddSingleton<ISongAnalysisRepository, DuckDbSongAnalysisRepository>();
+builder.Services.AddSingleton<ILyricTimingRepository, DuckDbLyricTimingRepository>();
 builder.Services.AddSingleton<IMediaProbe, FfprobeMediaProbe>();
 builder.Services.AddSingleton<IAudioSignalAnalyzer, FfmpegAudioSignalAnalyzer>();
 builder.Services.AddSingleton<SongAnalysisService>();
+builder.Services.AddSingleton<LyricTimingService>();
 
 builder.Services.AddSingleton<IProviderCatalog, MockProviderCatalog>();
 builder.Services.AddSingleton<ICredentialResolver, CredentialResolver>();
