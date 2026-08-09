@@ -5,6 +5,7 @@ using OpenMusicVideoCreator.Api.Endpoints;
 using OpenMusicVideoCreator.Api.Jobs;
 using OpenMusicVideoCreator.Api.Middleware;
 using OpenMusicVideoCreator.Application.Abstractions;
+using OpenMusicVideoCreator.Application.Analysis;
 using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Application.Projects;
 using OpenMusicVideoCreator.Application.Providers;
@@ -71,9 +72,15 @@ builder.Services.AddSingleton<DuckDbSettingsRepository>();
 builder.Services.AddSingleton<IApplicationSettingsRepository>(services => services.GetRequiredService<DuckDbSettingsRepository>());
 builder.Services.AddSingleton<IProjectSettingsRepository>(services => services.GetRequiredService<DuckDbSettingsRepository>());
 builder.Services.AddSingleton<IMediaAssetRepository, DuckDbMediaAssetRepository>();
+builder.Services.AddSingleton<LocalMediaPathResolver>();
 builder.Services.AddSingleton<IMediaStorage, LocalMediaStorage>();
 builder.Services.AddSingleton<ProjectService>();
 builder.Services.AddSingleton<ProjectMediaService>();
+
+builder.Services.AddSingleton<ISongAnalysisRepository, DuckDbSongAnalysisRepository>();
+builder.Services.AddSingleton<IMediaProbe, FfprobeMediaProbe>();
+builder.Services.AddSingleton<IAudioSignalAnalyzer, FfmpegAudioSignalAnalyzer>();
+builder.Services.AddSingleton<SongAnalysisService>();
 
 builder.Services.AddSingleton<IProviderCatalog, MockProviderCatalog>();
 builder.Services.AddSingleton<ICredentialResolver, CredentialResolver>();
