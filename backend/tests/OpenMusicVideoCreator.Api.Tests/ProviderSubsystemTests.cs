@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using OpenMusicVideoCreator.Api.Contracts.Providers;
 using OpenMusicVideoCreator.Application.Abstractions;
@@ -22,18 +23,29 @@ public sealed class ProviderSubsystemTests : IClassFixture<TestApplicationFactor
     public async Task ProviderApi_ListsCapabilityDrivenMockCatalog()
     {
         using var client = _factory.CreateClient();
-        var providers = await client.GetFromJsonAsync<ProviderCatalogResponse[]>("/api/providers");
+        using var response = await client.GetAsync("/api/providers/");
+        response.EnsureSuccessStatusCode();
 
-        Assert.NotNull(providers);
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var document = await JsonDocument.ParseAsync(stream);
+        var providers = document.RootElement.EnumerateArray().ToArray();
+
         Assert.Contains(providers, provider =>
-            provider.Id == MockImageProvider.ProviderId &&
-            provider.Models.Any(model => model.Capabilities.Contains(ProviderCapability.ImageGeneration)));
+            provider.GetProperty("id").GetString() == MockImageProvider.ProviderId &&
+            provider.GetProperty("models")[0]
+                .GetProperty("capabilities")
+                .EnumerateArray()
+                .Any(capability => capability.GetString() == nameof(ProviderCapability.ImageGeneration)));
         Assert.Contains(providers, provider =>
-            provider.Id == MockVideoProvider.ProviderId &&
-            provider.Models.Any(model => model.SupportsStartFrame && model.SupportsEndFrame));
+            provider.GetProperty("id").GetString() == MockVideoProvider.ProviderId &&
+            provider.GetProperty("models")[0].GetProperty("supportsStartFrame").GetBoolean() &&
+            provider.GetProperty("models")[0].GetProperty("supportsEndFrame").GetBoolean());
         Assert.Contains(providers, provider =>
-            provider.Id == MockDirectorProvider.ProviderId &&
-            provider.Models.Any(model => model.Capabilities.Contains(ProviderCapability.DirectorPlanning)));
+            provider.GetProperty("id").GetString() == MockDirectorProvider.ProviderId &&
+            provider.GetProperty("models")[0]
+                .GetProperty("capabilities")
+                .EnumerateArray()
+                .Any(capability => capability.GetString() == nameof(ProviderCapability.DirectorPlanning)));
     }
 
     [Fact]
