@@ -1,3 +1,4 @@
+using OpenMusicVideoCreator.Application.Projects;
 using OpenMusicVideoCreator.Domain.Projects;
 
 namespace OpenMusicVideoCreator.Api.Contracts.Projects;
@@ -85,4 +86,19 @@ public sealed record ProjectResponse(
             .ToArray(),
         project.CreatedUtc,
         project.UpdatedUtc);
+}
+
+public sealed record ProjectSongResponse(
+    Guid AssetId,
+    string MimeType,
+    long FileSize,
+    string ChecksumSha256,
+    DateTimeOffset CreatedUtc)
+{
+    public static ProjectSongResponse FromApplication(ProjectSong song) => new(
+        song.AssetId,
+        song.MimeType,
+        song.FileSize,
+        song.ChecksumSha256,
+        song.CreatedUtc);
 }
