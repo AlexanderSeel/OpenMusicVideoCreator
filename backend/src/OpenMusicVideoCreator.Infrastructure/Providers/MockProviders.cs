@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using OpenMusicVideoCreator.Application.Providers;
 
 namespace OpenMusicVideoCreator.Infrastructure.Providers;
@@ -61,9 +62,17 @@ public sealed class MockDirectorProvider : IDirectorProvider
             return ProviderResult<DirectorResponse>.Failed(failure);
         }
 
-        var response = new DirectorResponse(
-            $$"{"provider":"{{ProviderId}}","model":"{{request.ModelId}}","durationSeconds":{{request.SongDuration.TotalSeconds:0.###}},"prompt":"mock-director-output"}");
-        return ProviderResult<DirectorResponse>.Success(response, providerTaskId: $"mock:{Guid.NewGuid():N}");
+        var planJson = JsonSerializer.Serialize(new
+        {
+            provider = ProviderId,
+            model = request.ModelId,
+            durationSeconds = request.SongDuration.TotalSeconds,
+            prompt = "mock-director-output",
+        });
+
+        return ProviderResult<DirectorResponse>.Success(
+            new DirectorResponse(planJson),
+            providerTaskId: $"mock:{Guid.NewGuid():N}");
     }
 }
 
