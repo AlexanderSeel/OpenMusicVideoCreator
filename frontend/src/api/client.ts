@@ -6,6 +6,9 @@ type JobListResponse = paths["/api/jobs/"]["get"]["responses"][200]["content"]["
 export type ProjectResponse = components["schemas"]["ProjectResponse"];
 export type ProjectUpsertRequest = components["schemas"]["ProjectUpsertRequest"];
 export type ProjectSongResponse = components["schemas"]["ProjectSongResponse"];
+export type SongAnalysisResponse = components["schemas"]["SongAnalysisResponse"];
+export type SongSectionRequest = components["schemas"]["SongSectionRequest"];
+export type SongSectionKind = components["schemas"]["SongSectionKind"];
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5100";
 
@@ -13,8 +16,14 @@ async function readJson<T>(response: Response, context: string): Promise<T> {
   if (!response.ok) {
     let detail = "";
     try {
-      const body = (await response.json()) as { title?: string; errors?: Record<string, string[]> };
-      detail = body.errors ? ` ${Object.values(body.errors).flat().join(" ")}` : body.title ? ` ${body.title}` : "";
+      const body = (await response.json()) as { title?: string; detail?: string; errors?: Record<string, string[]> };
+      detail = body.errors
+        ? ` ${Object.values(body.errors).flat().join(" ")}`
+        : body.detail
+          ? ` ${body.detail}`
+          : body.title
+            ? ` ${body.title}`
+            : "";
     } catch {
       // The status code remains the useful fallback when the response has no JSON problem body.
     }
@@ -102,5 +111,56 @@ export async function uploadProjectSong(id: string, file: File): Promise<Project
       body,
     }),
     "Song upload",
+  );
+}
+
+export async function getSongAnalysis(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<SongAnalysisResponse | null> {
+  const response = await fetch(`${apiBaseUrl}/api/projects/${projectId}/analysis/`, {
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  return readJson<SongAnalysisResponse>(response, "Song analysis request");
+}
+
+export async function analyzeSong(projectId: string): Promise<SongAnalysisResponse> {
+  return readJson<SongAnalysisResponse>(
+    await fetch(`${apiBaseUrl}/api/projects/${projectId}/analysis/`, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+    }),
+    "Song analysis",
+  );
+}
+
+export async function listSongAnalysisVersions(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<SongAnalysisResponse[]> {
+  return readJson<SongAnalysisResponse[]>(
+    await fetch(`${apiBaseUrl}/api/projects/${projectId}/analysis/versions`, {
+      headers: { Accept: "application/json" },
+      signal,
+    }),
+    "Song analysis history",
+  );
+}
+
+export async function updateSongAnalysisSections(
+  projectId: string,
+  sections: SongSectionRequest[],
+): Promise<SongAnalysisResponse> {
+  return readJson<SongAnalysisResponse>(
+    await fetch(`${apiBaseUrl}/api/projects/${projectId}/analysis/sections`, {
+      method: "PUT",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(sections),
+    }),
+    "Structure Map update",
   );
 }
