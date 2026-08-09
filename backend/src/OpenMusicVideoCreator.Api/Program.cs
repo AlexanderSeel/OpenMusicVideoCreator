@@ -7,6 +7,7 @@ using OpenMusicVideoCreator.Api.Middleware;
 using OpenMusicVideoCreator.Application.Abstractions;
 using OpenMusicVideoCreator.Application.Analysis;
 using OpenMusicVideoCreator.Application.Jobs;
+using OpenMusicVideoCreator.Application.Library;
 using OpenMusicVideoCreator.Application.Projects;
 using OpenMusicVideoCreator.Application.Providers;
 using OpenMusicVideoCreator.Application.SystemInfo;
@@ -84,6 +85,15 @@ builder.Services.AddSingleton<IAudioSignalAnalyzer, FfmpegAudioSignalAnalyzer>()
 builder.Services.AddSingleton<SongAnalysisService>();
 builder.Services.AddSingleton<LyricTimingService>();
 
+builder.Services.AddSingleton<IVisualLibraryRepository, DuckDbVisualLibraryRepository>();
+builder.Services.AddSingleton<IAssetLibraryRepository, DuckDbAssetLibraryRepository>();
+builder.Services.AddSingleton<IProjectCharacterStateRepository, DuckDbProjectCharacterStateRepository>();
+builder.Services.AddSingleton<ILibraryMediaStorage, LocalLibraryMediaStorage>();
+builder.Services.AddSingleton<IMediaPreviewGenerator, FfmpegMediaPreviewGenerator>();
+builder.Services.AddSingleton<VisualLibraryService>();
+builder.Services.AddSingleton<AssetLibraryService>();
+builder.Services.AddSingleton<ProjectCharacterStateService>();
+
 builder.Services.AddSingleton<IProviderCatalog, MockProviderCatalog>();
 builder.Services.AddSingleton<ICredentialResolver, CredentialResolver>();
 builder.Services.AddSingleton<ProviderSettingsService>();
@@ -140,6 +150,7 @@ app.MapGet("/api/system/version", (IHostEnvironment environment) =>
 
 app.MapProjectEndpoints();
 app.MapSongAnalysisEndpoints();
+app.MapLibraryEndpoints();
 app.MapProviderEndpoints();
 app.MapJobEndpoints();
 
