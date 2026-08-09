@@ -37,7 +37,7 @@ public sealed class JobEngineIntegrationTests
         Assert.True(await context.Processor.ProcessNextAsync("worker-a", TimeSpan.FromMinutes(1)));
         await context.Service.MaintainRunnableStatesAsync();
 
-        var recreated = await context.RecreateAsync();
+        using var recreated = await context.RecreateAsync();
         var restoredParent = await recreated.Service.GetAsync(parent.Id);
         var restoredChild = await recreated.Service.GetAsync(child.Id);
         var dependencies = await recreated.Service.GetDependenciesAsync(child.Id);
@@ -47,7 +47,7 @@ public sealed class JobEngineIntegrationTests
         Assert.NotNull(restoredChild);
         Assert.Equal(JobState.Completed, restoredParent.State);
         Assert.Equal(JobState.Queued, restoredChild.State);
-        Assert.Equal([parent.Id], dependencies);
+        Assert.Equal(new[] { parent.Id }, dependencies);
         Assert.Single(attempts);
         Assert.Equal(JobState.Completed, attempts[0].State);
         Assert.NotNull(attempts[0].CompletedUtc);
@@ -109,7 +109,7 @@ public sealed class JobEngineIntegrationTests
         Assert.True(await context.Processor.ProcessNextAsync("worker", TimeSpan.FromMinutes(1)));
         Assert.Equal(JobState.WaitingForQuota, (await context.Service.GetAsync(quotaJob.Id))!.State);
 
-        var recreated = await context.RecreateAsync();
+        using var recreated = await context.RecreateAsync();
         var restored = await recreated.Service.GetAsync(quotaJob.Id);
         Assert.NotNull(restored);
         Assert.Equal(JobState.WaitingForQuota, restored.State);
