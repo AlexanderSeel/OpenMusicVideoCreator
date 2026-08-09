@@ -20,24 +20,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install dependencies
         run: npm install
-
       - name: Lint
         run: npm run lint
-
       - name: Typecheck
         run: npm run typecheck
-
       - name: Test
         run: npm run test:frontend
-
       - name: Build
         run: npm run build:frontend
 
@@ -45,7 +39,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       restore: ${{ steps.restore.outcome }}
-      build: ${{ steps.build.outcome }}
+      build_domain: ${{ steps.build_domain.outcome }}
+      build_application: ${{ steps.build_application.outcome }}
+      build_infrastructure: ${{ steps.build_infrastructure.outcome }}
+      build_api: ${{ steps.build_api.outcome }}
+      build_tests: ${{ steps.build_tests.outcome }}
       architecture_tests: ${{ steps.architecture_tests.outcome }}
       system_tests: ${{ steps.system_tests.outcome }}
       project_tests: ${{ steps.project_tests.outcome }}
@@ -59,88 +57,98 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-
       - id: restore
         name: Restore
         continue-on-error: true
         run: dotnet restore backend/OpenMusicVideoCreator.sln
-
-      - id: build
-        name: Build
+      - id: build_domain
+        name: Build Domain
         if: ${{ steps.restore.outcome == 'success' }}
         continue-on-error: true
+        run: dotnet build backend/src/OpenMusicVideoCreator.Domain/OpenMusicVideoCreator.Domain.csproj -c Release --no-restore
+      - id: build_application
+        name: Build Application
+        if: ${{ steps.restore.outcome == 'success' && steps.build_domain.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet build backend/src/OpenMusicVideoCreator.Application/OpenMusicVideoCreator.Application.csproj -c Release --no-restore
+      - id: build_infrastructure
+        name: Build Infrastructure
+        if: ${{ steps.restore.outcome == 'success' && steps.build_application.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet build backend/src/OpenMusicVideoCreator.Infrastructure/OpenMusicVideoCreator.Infrastructure.csproj -c Release --no-restore
+      - id: build_api
+        name: Build API
+        if: ${{ steps.restore.outcome == 'success' && steps.build_infrastructure.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet build backend/src/OpenMusicVideoCreator.Api/OpenMusicVideoCreator.Api.csproj -c Release --no-restore
+      - id: build_tests
+        name: Build Tests
+        if: ${{ steps.restore.outcome == 'success' && steps.build_api.outcome == 'success' }}
+        continue-on-error: true
         run: dotnet build backend/OpenMusicVideoCreator.sln -c Release --no-restore
-
       - id: architecture_tests
         name: Architecture tests
-        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        if: ${{ steps.build_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.ArchitectureTests/OpenMusicVideoCreator.ArchitectureTests.csproj -c Release --no-build
-
       - id: system_tests
         name: System API tests
-        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        if: ${{ steps.build_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~SystemEndpointTests
-
       - id: project_tests
         name: Project API tests
-        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        if: ${{ steps.build_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProjectEndpointTests
-
       - id: persistence_tests
         name: Persistence tests
-        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        if: ${{ steps.build_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~PersistenceIntegrationTests
-
       - id: provider_catalog_test
         name: Provider catalog test
-        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        if: ${{ steps.build_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProviderApi_ListsCapabilityDrivenMockCatalog
-
       - id: provider_secret_test
         name: Provider secret persistence test
-        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        if: ${{ steps.build_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProviderSettings_PersistReferenceButNeverSecretValue
-
       - id: provider_validation_test
         name: Provider settings validation test
-        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        if: ${{ steps.build_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProviderSettings_RejectUnsupportedModelCapabilityPair
-
       - id: provider_mock_test
         name: Mock provider behavior test
-        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        if: ${{ steps.build_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~MockProviders_NormalizeSuccessDelayAndFailureScenarios
-
       - id: job_engine_tests
         name: Persistent job engine tests
-        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        if: ${{ steps.build_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~JobEngineIntegrationTests
-
       - id: job_api_tests
         name: Job API and stream tests
-        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        if: ${{ steps.build_tests.outcome == 'success' }}
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~JobApiTests
-
       - name: Enforce backend result
         if: ${{ always() }}
         env:
           RESTORE_RESULT: ${{ steps.restore.outcome }}
-          BUILD_RESULT: ${{ steps.build.outcome }}
+          BUILD_DOMAIN_RESULT: ${{ steps.build_domain.outcome }}
+          BUILD_APPLICATION_RESULT: ${{ steps.build_application.outcome }}
+          BUILD_INFRASTRUCTURE_RESULT: ${{ steps.build_infrastructure.outcome }}
+          BUILD_API_RESULT: ${{ steps.build_api.outcome }}
+          BUILD_TESTS_RESULT: ${{ steps.build_tests.outcome }}
           ARCHITECTURE_RESULT: ${{ steps.architecture_tests.outcome }}
           SYSTEM_RESULT: ${{ steps.system_tests.outcome }}
           PROJECT_RESULT: ${{ steps.project_tests.outcome }}
@@ -152,27 +160,17 @@ jobs:
           JOB_ENGINE_RESULT: ${{ steps.job_engine_tests.outcome }}
           JOB_API_RESULT: ${{ steps.job_api_tests.outcome }}
         run: |
-          if [ "$RESTORE_RESULT" != "success" ] || \
-             [ "$BUILD_RESULT" != "success" ] || \
-             [ "$ARCHITECTURE_RESULT" != "success" ] || \
-             [ "$SYSTEM_RESULT" != "success" ] || \
-             [ "$PROJECT_RESULT" != "success" ] || \
-             [ "$PERSISTENCE_RESULT" != "success" ] || \
-             [ "$PROVIDER_CATALOG_RESULT" != "success" ] || \
-             [ "$PROVIDER_SECRET_RESULT" != "success" ] || \
-             [ "$PROVIDER_VALIDATION_RESULT" != "success" ] || \
-             [ "$PROVIDER_MOCK_RESULT" != "success" ] || \
-             [ "$JOB_ENGINE_RESULT" != "success" ] || \
-             [ "$JOB_API_RESULT" != "success" ]; then
-            echo "Backend validation failed: restore=$RESTORE_RESULT build=$BUILD_RESULT architecture=$ARCHITECTURE_RESULT system=$SYSTEM_RESULT project=$PROJECT_RESULT persistence=$PERSISTENCE_RESULT provider_catalog=$PROVIDER_CATALOG_RESULT provider_secret=$PROVIDER_SECRET_RESULT provider_validation=$PROVIDER_VALIDATION_RESULT provider_mock=$PROVIDER_MOCK_RESULT job_engine=$JOB_ENGINE_RESULT job_api=$JOB_API_RESULT"
-            exit 1
-          fi
+          results="$RESTORE_RESULT $BUILD_DOMAIN_RESULT $BUILD_APPLICATION_RESULT $BUILD_INFRASTRUCTURE_RESULT $BUILD_API_RESULT $BUILD_TESTS_RESULT $ARCHITECTURE_RESULT $SYSTEM_RESULT $PROJECT_RESULT $PERSISTENCE_RESULT $PROVIDER_CATALOG_RESULT $PROVIDER_SECRET_RESULT $PROVIDER_VALIDATION_RESULT $PROVIDER_MOCK_RESULT $JOB_ENGINE_RESULT $JOB_API_RESULT"
+          for result in $results; do
+            if [ "$result" != "success" ]; then
+              echo "Backend validation failed: restore=$RESTORE_RESULT domain=$BUILD_DOMAIN_RESULT application=$BUILD_APPLICATION_RESULT infrastructure=$BUILD_INFRASTRUCTURE_RESULT api=$BUILD_API_RESULT tests=$BUILD_TESTS_RESULT architecture=$ARCHITECTURE_RESULT system=$SYSTEM_RESULT project=$PROJECT_RESULT persistence=$PERSISTENCE_RESULT provider_catalog=$PROVIDER_CATALOG_RESULT provider_secret=$PROVIDER_SECRET_RESULT provider_validation=$PROVIDER_VALIDATION_RESULT provider_mock=$PROVIDER_MOCK_RESULT job_engine=$JOB_ENGINE_RESULT job_api=$JOB_API_RESULT"
+              exit 1
+            fi
+          done
 
   report-main-status:
     if: ${{ always() && github.event_name == 'push' }}
-    needs:
-      - frontend
-      - backend
+    needs: [frontend, backend]
     runs-on: ubuntu-latest
     steps:
       - name: Report commit statuses
@@ -183,7 +181,11 @@ jobs:
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           BACKEND_RESULT: ${{ needs.backend.result }}
           RESTORE_RESULT: ${{ needs.backend.outputs.restore }}
-          BUILD_RESULT: ${{ needs.backend.outputs.build }}
+          BUILD_DOMAIN_RESULT: ${{ needs.backend.outputs.build_domain }}
+          BUILD_APPLICATION_RESULT: ${{ needs.backend.outputs.build_application }}
+          BUILD_INFRASTRUCTURE_RESULT: ${{ needs.backend.outputs.build_infrastructure }}
+          BUILD_API_RESULT: ${{ needs.backend.outputs.build_api }}
+          BUILD_TESTS_RESULT: ${{ needs.backend.outputs.build_tests }}
           ARCHITECTURE_RESULT: ${{ needs.backend.outputs.architecture_tests }}
           SYSTEM_RESULT: ${{ needs.backend.outputs.system_tests }}
           PROJECT_RESULT: ${{ needs.backend.outputs.project_tests }}
@@ -199,55 +201,34 @@ jobs:
             local context="$1"
             local state="$2"
             local description="$3"
-            curl --fail-with-body --silent --show-error \
-              -X POST \
+            curl --fail-with-body --silent --show-error -X POST \
               -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "https://api.github.com/repos/$REPOSITORY/statuses/$SHA" \
               -d "{\"state\":\"$state\",\"context\":\"$context\",\"description\":\"$description\"}"
           }
-
-          to_state() {
-            if [ "$1" = "success" ]; then echo success; else echo failure; fi
-          }
-
-          frontend_state=$(to_state "$FRONTEND_RESULT")
+          to_state() { if [ "$1" = "success" ]; then echo success; else echo failure; fi; }
+          post_status "ci/frontend" "$(to_state "$FRONTEND_RESULT")" "frontend=$FRONTEND_RESULT"
+          post_status "ci/backend/restore" "$(to_state "$RESTORE_RESULT")" "restore=$RESTORE_RESULT"
+          post_status "ci/backend/build/domain" "$(to_state "$BUILD_DOMAIN_RESULT")" "domain=$BUILD_DOMAIN_RESULT"
+          post_status "ci/backend/build/application" "$(to_state "$BUILD_APPLICATION_RESULT")" "application=$BUILD_APPLICATION_RESULT"
+          post_status "ci/backend/build/infrastructure" "$(to_state "$BUILD_INFRASTRUCTURE_RESULT")" "infrastructure=$BUILD_INFRASTRUCTURE_RESULT"
+          post_status "ci/backend/build/api" "$(to_state "$BUILD_API_RESULT")" "api=$BUILD_API_RESULT"
+          post_status "ci/backend/build/tests" "$(to_state "$BUILD_TESTS_RESULT")" "tests=$BUILD_TESTS_RESULT"
+          post_status "ci/backend/test/architecture" "$(to_state "$ARCHITECTURE_RESULT")" "architecture=$ARCHITECTURE_RESULT"
+          post_status "ci/backend/test/system" "$(to_state "$SYSTEM_RESULT")" "system=$SYSTEM_RESULT"
+          post_status "ci/backend/test/project" "$(to_state "$PROJECT_RESULT")" "project=$PROJECT_RESULT"
+          post_status "ci/backend/test/persistence" "$(to_state "$PERSISTENCE_RESULT")" "persistence=$PERSISTENCE_RESULT"
+          post_status "ci/backend/test/provider-catalog" "$(to_state "$PROVIDER_CATALOG_RESULT")" "provider_catalog=$PROVIDER_CATALOG_RESULT"
+          post_status "ci/backend/test/provider-secret" "$(to_state "$PROVIDER_SECRET_RESULT")" "provider_secret=$PROVIDER_SECRET_RESULT"
+          post_status "ci/backend/test/provider-validation" "$(to_state "$PROVIDER_VALIDATION_RESULT")" "provider_validation=$PROVIDER_VALIDATION_RESULT"
+          post_status "ci/backend/test/provider-mock" "$(to_state "$PROVIDER_MOCK_RESULT")" "provider_mock=$PROVIDER_MOCK_RESULT"
+          post_status "ci/backend/test/job-engine" "$(to_state "$JOB_ENGINE_RESULT")" "job_engine=$JOB_ENGINE_RESULT"
+          post_status "ci/backend/test/job-api" "$(to_state "$JOB_API_RESULT")" "job_api=$JOB_API_RESULT"
           backend_state=$(to_state "$BACKEND_RESULT")
-          restore_state=$(to_state "$RESTORE_RESULT")
-          build_state=$(to_state "$BUILD_RESULT")
-          architecture_state=$(to_state "$ARCHITECTURE_RESULT")
-          system_state=$(to_state "$SYSTEM_RESULT")
-          project_state=$(to_state "$PROJECT_RESULT")
-          persistence_state=$(to_state "$PERSISTENCE_RESULT")
-          provider_catalog_state=$(to_state "$PROVIDER_CATALOG_RESULT")
-          provider_secret_state=$(to_state "$PROVIDER_SECRET_RESULT")
-          provider_validation_state=$(to_state "$PROVIDER_VALIDATION_RESULT")
-          provider_mock_state=$(to_state "$PROVIDER_MOCK_RESULT")
-          job_engine_state=$(to_state "$JOB_ENGINE_RESULT")
-          job_api_state=$(to_state "$JOB_API_RESULT")
-
-          post_status "ci/frontend" "$frontend_state" "frontend=$FRONTEND_RESULT"
-          post_status "ci/backend/restore" "$restore_state" "restore=$RESTORE_RESULT"
-          post_status "ci/backend/build" "$build_state" "build=$BUILD_RESULT"
-          post_status "ci/backend/test/architecture" "$architecture_state" "architecture=$ARCHITECTURE_RESULT"
-          post_status "ci/backend/test/system" "$system_state" "system=$SYSTEM_RESULT"
-          post_status "ci/backend/test/project" "$project_state" "project=$PROJECT_RESULT"
-          post_status "ci/backend/test/persistence" "$persistence_state" "persistence=$PERSISTENCE_RESULT"
-          post_status "ci/backend/test/provider-catalog" "$provider_catalog_state" "provider_catalog=$PROVIDER_CATALOG_RESULT"
-          post_status "ci/backend/test/provider-secret" "$provider_secret_state" "provider_secret=$PROVIDER_SECRET_RESULT"
-          post_status "ci/backend/test/provider-validation" "$provider_validation_state" "provider_validation=$PROVIDER_VALIDATION_RESULT"
-          post_status "ci/backend/test/provider-mock" "$provider_mock_state" "provider_mock=$PROVIDER_MOCK_RESULT"
-          post_status "ci/backend/test/job-engine" "$job_engine_state" "job_engine=$JOB_ENGINE_RESULT"
-          post_status "ci/backend/test/job-api" "$job_api_state" "job_api=$JOB_API_RESULT"
           post_status "ci/backend" "$backend_state" "backend=$BACKEND_RESULT"
-
           combined_state=success
-          if [ "$frontend_state" != "success" ] || [ "$backend_state" != "success" ]; then
-            combined_state=failure
-          fi
+          if [ "$(to_state "$FRONTEND_RESULT")" != "success" ] || [ "$backend_state" != "success" ]; then combined_state=failure; fi
           post_status "ci/combined" "$combined_state" "frontend=$FRONTEND_RESULT backend=$BACKEND_RESULT"
-
-          if [ "$combined_state" != "success" ]; then
-            exit 1
-          fi
+          if [ "$combined_state" != "success" ]; then exit 1; fi
