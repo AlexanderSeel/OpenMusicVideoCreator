@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using OpenMusicVideoCreator.Api.Jobs;
 
 namespace OpenMusicVideoCreator.Api.Tests;
 
@@ -23,6 +26,19 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
                 ["Storage:ProjectsRoot"] = Path.Combine(_tempRoot, "projects"),
                 ["Jobs:WorkerEnabled"] = "false",
             });
+        });
+        builder.ConfigureServices(services =>
+        {
+            var workerDescriptors = services
+                .Where(descriptor =>
+                    descriptor.ServiceType == typeof(IHostedService) &&
+                    descriptor.ImplementationType == typeof(PersistentJobWorker))
+                .ToArray();
+
+            foreach (var descriptor in workerDescriptors)
+            {
+                services.Remove(descriptor);
+            }
         });
     }
 
