@@ -2,6 +2,7 @@ import type { paths } from "./schema";
 
 type SystemVersionResponse = paths["/api/system/version"]["get"]["responses"][200]["content"]["application/json"];
 type ProviderCatalogResponse = paths["/api/providers/"]["get"]["responses"][200]["content"]["application/json"];
+type JobListResponse = paths["/api/jobs/"]["get"]["responses"][200]["content"]["application/json"];
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5100";
 
@@ -31,4 +32,18 @@ export async function getProviderCatalog(signal?: AbortSignal): Promise<Provider
   }
 
   return (await response.json()) as ProviderCatalogResponse;
+}
+
+export async function getJobs(signal?: AbortSignal): Promise<JobListResponse> {
+  const response = await fetch(`${apiBaseUrl}/api/jobs/`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Job list request failed with HTTP ${response.status}.`);
+  }
+
+  return (await response.json()) as JobListResponse;
 }
