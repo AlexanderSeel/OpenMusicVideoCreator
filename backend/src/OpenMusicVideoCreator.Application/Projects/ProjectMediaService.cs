@@ -88,7 +88,7 @@ public sealed class ProjectMediaService
             projectId,
             MediaStorageArea.Source,
             source,
-            Path.GetFileName(fileName),
+            fileName,
             cancellationToken);
 
         var now = GetUtcNow();
@@ -134,8 +134,8 @@ public sealed class ProjectMediaService
                 nameof(fileSize));
         }
 
-        var leafName = Path.GetFileName(fileName);
-        if (!string.Equals(leafName, fileName, StringComparison.Ordinal))
+        if (fileName.IndexOfAny(['/', '\\']) >= 0 ||
+            !string.Equals(Path.GetFileName(fileName), fileName, StringComparison.Ordinal))
         {
             throw new ArgumentException("Song file name must not contain a path.", nameof(fileName));
         }
@@ -146,8 +146,9 @@ public sealed class ProjectMediaService
             throw new ArgumentException($"Unsupported song file extension '{extension}'.", nameof(fileName));
         }
 
-        if (!NormalizeContentType(contentType).StartsWith("audio/", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(NormalizeContentType(contentType), "video/webm", StringComparison.OrdinalIgnoreCase))
+        var normalizedContentType = NormalizeContentType(contentType);
+        if (!normalizedContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(normalizedContentType, "video/webm", StringComparison.OrdinalIgnoreCase))
         {
             throw new ArgumentException($"Unsupported song MIME type '{contentType}'.", nameof(contentType));
         }
