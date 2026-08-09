@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>OpenMusicVideoCreator.Application</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenMusicVideoCreator.Domain\OpenMusicVideoCreator.Domain.csproj" />
+  </ItemGroup>
+</Project>
