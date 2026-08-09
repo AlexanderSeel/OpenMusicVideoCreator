@@ -17,15 +17,7 @@ interface SongAnalysisPanelProps {
 }
 
 const sectionKinds: SongSectionKind[] = [
-  "Unknown",
-  "Intro",
-  "Verse",
-  "PreChorus",
-  "Chorus",
-  "Bridge",
-  "Breakdown",
-  "Instrumental",
-  "Outro",
+  "Unknown", "Intro", "Verse", "PreChorus", "Chorus", "Bridge", "Breakdown", "Instrumental", "Outro",
 ];
 
 export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnalysisPanelProps) {
@@ -100,11 +92,7 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
     }
   }
 
-  function updateSection<K extends keyof SongSectionRequest>(
-    index: number,
-    key: K,
-    value: SongSectionRequest[K],
-  ) {
+  function updateSection<K extends keyof SongSectionRequest>(index: number, key: K, value: SongSectionRequest[K]) {
     setSections((current) => current.map((section, currentIndex) =>
       currentIndex === index ? { ...section, [key]: value } : section));
   }
@@ -121,7 +109,6 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
   return (
     <section className="analysis-panel" aria-labelledby="analysis-heading">
       <AnalysisHeader />
-
       {!songAttached ? (
         <div className="analysis-callout">
           <div><strong>No song attached</strong><span>Choose a song above and save the project before analysis.</span></div>
@@ -133,12 +120,7 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
           <strong>{analysis ? `Analysis v${analysis.version}` : "Not analyzed yet"}</strong>
           <span>{analysis ? "Local FFmpeg/ffprobe analysis is persisted and editable." : "Analyze locally before any AI Director work."}</span>
         </div>
-        <button
-          className="button button-primary"
-          type="button"
-          disabled={!songAttached || loading}
-          onClick={() => void runAnalysis()}
-        >
+        <button className="button button-primary" type="button" disabled={!songAttached || loading} onClick={() => void runAnalysis()}>
           {loading ? "Analyzing…" : analysis ? "Analyze again" : "Analyze song"}
         </button>
       </div>
@@ -152,18 +134,25 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
             <Stat label="BPM" value={analysis.bpm ? analysis.bpm.toFixed(1) : "uncertain"} />
             <Stat label="Sample rate" value={analysis.sampleRate ? `${analysis.sampleRate.toLocaleString()} Hz` : "—"} />
             <Stat label="Beats" value={analysis.beats.length.toString()} />
+            <Stat label="Bars" value={analysis.bars.length.toString()} />
+            <Stat label="Phrases" value={analysis.phrases.length.toString()} />
+            <Stat label="Quiet ranges" value={analysis.quietRanges.length.toString()} />
           </div>
 
           <div className="waveform-card">
             <div className="waveform-heading">
-              <strong>Waveform & beat map</strong>
+              <strong>Waveform, beats, bars & phrases</strong>
               <span>{analysis.codec ?? "audio"} • {analysis.channels ?? "?"} ch</span>
             </div>
             <Waveform analysis={analysis} />
+            <div className="timeline-legend" aria-label="Waveform legend">
+              <span><i className="legend-beat" />beat</span>
+              <span><i className="legend-bar" />bar</span>
+              <span><i className="legend-phrase" />phrase</span>
+              <span><i className="legend-quiet" />quiet</span>
+            </div>
             <div className="timeline-scale" aria-hidden="true">
-              <span>0:00</span>
-              <span>{formatDuration(analysis.durationSeconds / 2)}</span>
-              <span>{formatDuration(analysis.durationSeconds)}</span>
+              <span>0:00</span><span>{formatDuration(analysis.durationSeconds / 2)}</span><span>{formatDuration(analysis.durationSeconds)}</span>
             </div>
             <div className="lyrics-lane">
               <span>Lyrics lane</span>
@@ -178,8 +167,7 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
                 <span>Detected boundaries are suggestions. Edits create a new analysis version.</span>
               </div>
               <div className="structure-summary">
-                <span>{sections.length} sections</span>
-                <span>{formatDuration(sectionDuration)} mapped</span>
+                <span>{sections.length} sections</span><span>{formatDuration(sectionDuration)} mapped</span>
               </div>
             </div>
 
@@ -189,48 +177,20 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
               </div>
               {sections.map((section, index) => (
                 <div className="section-row" key={section.id ?? `${section.startSeconds}-${index}`}>
-                  <input
-                    aria-label={`Section ${index + 1} label`}
-                    value={section.label}
-                    onChange={(event) => updateSection(index, "label", event.target.value)}
-                  />
-                  <select
-                    aria-label={`Section ${index + 1} type`}
-                    value={section.kind}
-                    onChange={(event) => updateSection(index, "kind", event.target.value as SongSectionKind)}
-                  >
+                  <input aria-label={`Section ${index + 1} label`} value={section.label} onChange={(event) => updateSection(index, "label", event.target.value)} />
+                  <select aria-label={`Section ${index + 1} type`} value={section.kind} onChange={(event) => updateSection(index, "kind", event.target.value as SongSectionKind)}>
                     {sectionKinds.map((kind) => <option key={kind} value={kind}>{formatKind(kind)}</option>)}
                   </select>
-                  <input
-                    aria-label={`Section ${index + 1} start in seconds`}
-                    type="number"
-                    min="0"
-                    max={analysis.durationSeconds}
-                    step="0.1"
-                    value={section.startSeconds}
-                    onChange={(event) => updateSection(index, "startSeconds", Number(event.target.value))}
-                  />
-                  <input
-                    aria-label={`Section ${index + 1} end in seconds`}
-                    type="number"
-                    min="0"
-                    max={analysis.durationSeconds}
-                    step="0.1"
-                    value={section.endSeconds}
-                    onChange={(event) => updateSection(index, "endSeconds", Number(event.target.value))}
-                  />
-                  <span className="source-pill">
-                    {analysis.sections[index]?.source === "UserEdited" ? "edited" : "detected"}
-                  </span>
+                  <input aria-label={`Section ${index + 1} start in seconds`} type="number" min="0" max={analysis.durationSeconds} step="0.1" value={section.startSeconds} onChange={(event) => updateSection(index, "startSeconds", Number(event.target.value))} />
+                  <input aria-label={`Section ${index + 1} end in seconds`} type="number" min="0" max={analysis.durationSeconds} step="0.1" value={section.endSeconds} onChange={(event) => updateSection(index, "endSeconds", Number(event.target.value))} />
+                  <span className="source-pill">{analysis.sections[index]?.source === "UserEdited" ? "edited" : "detected"}</span>
                 </div>
               ))}
             </div>
 
             <div className="structure-actions">
               <span>Ranges must be ordered, non-overlapping, and inside the song duration.</span>
-              <button className="button" type="button" disabled={saving} onClick={() => void saveSections()}>
-                {saving ? "Saving…" : "Save Structure Map"}
-              </button>
+              <button className="button" type="button" disabled={saving} onClick={() => void saveSections()}>{saving ? "Saving…" : "Save Structure Map"}</button>
             </div>
           </div>
         </>
@@ -240,12 +200,7 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
 }
 
 function AnalysisHeader() {
-  return (
-    <div className="section-heading analysis-title">
-      <div><span>05</span><h2 id="analysis-heading">Song analysis</h2></div>
-      <p>Local signal analysis drives timing before storyboard generation.</p>
-    </div>
-  );
+  return <div className="section-heading analysis-title"><div><span>05</span><h2 id="analysis-heading">Song analysis</h2></div><p>Local signal analysis drives timing before storyboard generation.</p></div>;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -258,7 +213,13 @@ function Waveform({ analysis }: { analysis: SongAnalysisResponse }) {
   const middle = height / 2;
   const duration = Math.max(analysis.durationSeconds, 0.001);
   return (
-    <svg className="waveform" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Song waveform with detected beat markers" preserveAspectRatio="none">
+    <svg className="waveform" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Song waveform with detected beats, bars, phrases, and quiet ranges" preserveAspectRatio="none">
+      {analysis.quietRanges.map((range, index) => (
+        <rect key={`quiet-${index}`} className="quiet-range" x={(range.startSeconds / duration) * width} y="0" width={Math.max(1, ((range.endSeconds - range.startSeconds) / duration) * width)} height={height} />
+      ))}
+      {analysis.phrases.map((phrase) => (
+        <rect key={`phrase-${phrase.number}`} className="phrase-range" x={(phrase.startSeconds / duration) * width} y="0" width={Math.max(1, ((phrase.endSeconds - phrase.startSeconds) / duration) * width)} height="8" opacity={0.25 + phrase.confidence * 0.5} />
+      ))}
       <line className="waveform-zero" x1="0" x2={width} y1={middle} y2={middle} />
       {analysis.waveform.map((bucket, index) => {
         const x = ((bucket.startSeconds + bucket.endSeconds) / 2 / duration) * width;
@@ -266,41 +227,16 @@ function Waveform({ analysis }: { analysis: SongAnalysisResponse }) {
         const y2 = middle - Math.min(0, bucket.minimum) * middle * 0.9;
         return <line key={index} className="waveform-sample" x1={x} x2={x} y1={y1} y2={y2} />;
       })}
-      {analysis.beats.map((beat, index) => (
-        <line
-          key={`${beat.timeSeconds}-${index}`}
-          className="beat-marker"
-          x1={(beat.timeSeconds / duration) * width}
-          x2={(beat.timeSeconds / duration) * width}
-          y1="0"
-          y2={height}
-          opacity={0.15 + beat.confidence * 0.45}
-        />
-      ))}
+      {analysis.beats.map((beat, index) => <line key={`beat-${index}`} className="beat-marker" x1={(beat.timeSeconds / duration) * width} x2={(beat.timeSeconds / duration) * width} y1="10" y2={height} opacity={0.12 + beat.confidence * 0.28} />)}
+      {analysis.bars.map((bar) => <line key={`bar-${bar.number}`} className="bar-marker" x1={(bar.timeSeconds / duration) * width} x2={(bar.timeSeconds / duration) * width} y1="8" y2={height} opacity={0.3 + bar.confidence * 0.5} />)}
     </svg>
   );
 }
 
 function toSectionRequests(analysis: SongAnalysisResponse): SongSectionRequest[] {
-  return analysis.sections.map((section) => ({
-    id: section.id,
-    label: section.label,
-    kind: section.kind,
-    startSeconds: round(section.startSeconds),
-    endSeconds: round(section.endSeconds),
-  }));
+  return analysis.sections.map((section) => ({ id: section.id, label: section.label, kind: section.kind, startSeconds: round(section.startSeconds), endSeconds: round(section.endSeconds) }));
 }
 
-function round(value: number) {
-  return Math.round(value * 10) / 10;
-}
-
-function formatDuration(seconds: number): string {
-  const safe = Math.max(0, Math.round(seconds));
-  const minutes = Math.floor(safe / 60);
-  return `${minutes}:${String(safe % 60).padStart(2, "0")}`;
-}
-
-function formatKind(kind: SongSectionKind): string {
-  return kind.replace(/([a-z])([A-Z])/g, "$1 $2");
-}
+function round(value: number) { return Math.round(value * 10) / 10; }
+function formatDuration(seconds: number): string { const safe = Math.max(0, Math.round(seconds)); return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`; }
+function formatKind(kind: SongSectionKind): string { return kind.replace(/([a-z])([A-Z])/g, "$1 $2"); }
