@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using OpenMusicVideoCreator.Api.Contracts.Library;
 using OpenMusicVideoCreator.Application.Abstractions;
 using OpenMusicVideoCreator.Application.Library;
@@ -15,10 +16,10 @@ public static class LibraryEndpoints
             VisualLibraryKind? kind,
             string? query,
             string[]? tags,
-            bool favoritesOnly,
+            bool? favoritesOnly,
             VisualLibraryService service,
             CancellationToken cancellationToken) =>
-            Results.Ok((await service.ListAsync(kind, query, tags, favoritesOnly, cancellationToken))
+            Results.Ok((await service.ListAsync(kind, query, tags, favoritesOnly ?? false, cancellationToken))
                 .Select(VisualLibraryResponse.FromDomain)
                 .ToArray()))
             .WithName("ListVisualLibraryItems")
@@ -104,10 +105,10 @@ public static class LibraryEndpoints
         library.MapGet("/assets", async (
             string? query,
             string[]? tags,
-            bool favoritesOnly,
+            bool? favoritesOnly,
             AssetLibraryService service,
             CancellationToken cancellationToken) =>
-            Results.Ok((await service.ListAsync(query, tags, favoritesOnly, cancellationToken))
+            Results.Ok((await service.ListAsync(query, tags, favoritesOnly ?? false, cancellationToken))
                 .Select(AssetLibraryResponse.FromDomain)
                 .ToArray()))
             .WithName("ListAssetLibraryEntries")
@@ -126,16 +127,16 @@ public static class LibraryEndpoints
             .Produces(StatusCodes.Status404NotFound);
 
         library.MapPost("/assets", async Task<IResult> (
-            IFormFile file,
-            string? name,
-            string? tags,
-            string? sourceDescription,
+            [FromForm] IFormFile file,
+            [FromForm] string? name,
+            [FromForm] string? tags,
+            [FromForm] string? sourceDescription,
             AssetLibraryService service,
             CancellationToken cancellationToken) =>
         {
             try
             {
-                await using var stream = file.OpenReadStream(AssetLibraryService.MaxAssetBytes);
+                await using var stream = file.OpenReadStream();
                 var item = await service.UploadAsync(
                     stream,
                     file.FileName,
