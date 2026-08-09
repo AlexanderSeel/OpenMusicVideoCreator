@@ -82,6 +82,21 @@ public sealed record QuietRangeResponse(
         range.AverageEnergy);
 }
 
+public sealed record VocalActivityResponse(
+    double VocalFraction,
+    double InstrumentalFraction,
+    double Confidence,
+    string Method)
+{
+    public static VocalActivityResponse? FromDomain(VocalActivityEstimate? estimate) => estimate is null
+        ? null
+        : new VocalActivityResponse(
+            estimate.VocalFraction,
+            estimate.InstrumentalFraction,
+            estimate.Confidence,
+            estimate.Method);
+}
+
 public sealed record SongAnalysisResponse(
     Guid Id,
     Guid ProjectId,
@@ -99,6 +114,7 @@ public sealed record SongAnalysisResponse(
     IReadOnlyList<BarMarkerResponse> Bars,
     IReadOnlyList<PhraseMarkerResponse> Phrases,
     IReadOnlyList<QuietRangeResponse> QuietRanges,
+    VocalActivityResponse? VocalActivity,
     IReadOnlyList<SongSectionResponse> Sections,
     DateTimeOffset CreatedUtc)
 {
@@ -119,6 +135,52 @@ public sealed record SongAnalysisResponse(
         analysis.Bars.Select(BarMarkerResponse.FromDomain).ToArray(),
         analysis.Phrases.Select(PhraseMarkerResponse.FromDomain).ToArray(),
         analysis.QuietRanges.Select(QuietRangeResponse.FromDomain).ToArray(),
+        VocalActivityResponse.FromDomain(analysis.VocalActivity),
         analysis.Sections.Select(SongSectionResponse.FromDomain).ToArray(),
         analysis.CreatedUtc);
+}
+
+public sealed record TranscriptionSegmentRequest(
+    double StartSeconds,
+    double EndSeconds,
+    string Text);
+
+public sealed record LyricTimingLineResponse(
+    int LineNumber,
+    string Text,
+    double? StartSeconds,
+    double? EndSeconds,
+    double Confidence,
+    bool IsMatched)
+{
+    public static LyricTimingLineResponse FromDomain(LyricTimingLine line) => new(
+        line.LineNumber,
+        line.Text,
+        line.StartSeconds,
+        line.EndSeconds,
+        line.Confidence,
+        line.IsMatched);
+}
+
+public sealed record LyricTimingResponse(
+    Guid Id,
+    Guid ProjectId,
+    Guid SourceAssetId,
+    Guid SongAnalysisId,
+    int Version,
+    string SuppliedLyricsSha256,
+    double MatchedFraction,
+    IReadOnlyList<LyricTimingLineResponse> Lines,
+    DateTimeOffset CreatedUtc)
+{
+    public static LyricTimingResponse FromDomain(LyricTimingAnalysis timing) => new(
+        timing.Id,
+        timing.ProjectId,
+        timing.SourceAssetId,
+        timing.SongAnalysisId,
+        timing.Version,
+        timing.SuppliedLyricsSha256,
+        timing.MatchedFraction,
+        timing.Lines.Select(LyricTimingLineResponse.FromDomain).ToArray(),
+        timing.CreatedUtc);
 }
