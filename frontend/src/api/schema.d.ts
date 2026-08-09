@@ -42,27 +42,15 @@ export interface paths {
     get: {
       parameters: { path: { id: string } };
       responses: {
-        200: {
-          content: {
-            "application/json": components["schemas"]["ProjectResponse"];
-          };
-        };
+        200: { content: { "application/json": components["schemas"]["ProjectResponse"] } };
         404: { content?: never };
       };
     };
     put: {
       parameters: { path: { id: string } };
-      requestBody: {
-        content: {
-          "application/json": components["schemas"]["ProjectUpsertRequest"];
-        };
-      };
+      requestBody: { content: { "application/json": components["schemas"]["ProjectUpsertRequest"] } };
       responses: {
-        200: {
-          content: {
-            "application/json": components["schemas"]["ProjectResponse"];
-          };
-        };
+        200: { content: { "application/json": components["schemas"]["ProjectResponse"] } };
         404: { content?: never };
       };
     };
@@ -87,11 +75,36 @@ export interface paths {
     post: {
       requestBody: { content: { "application/json": unknown } };
       responses: {
-        201: {
+        201: { content: { "application/json": components["schemas"]["ProjectResponse"] } };
+      };
+    };
+  };
+  "/api/providers/": {
+    get: {
+      responses: {
+        200: {
           content: {
-            "application/json": components["schemas"]["ProjectResponse"];
+            "application/json": components["schemas"]["ProviderCatalogResponse"][];
           };
         };
+      };
+    };
+  };
+  "/api/providers/{providerId}/settings": {
+    get: {
+      parameters: { path: { providerId: string } };
+      responses: {
+        200: { content: { "application/json": components["schemas"]["ProviderSettingsResponse"] } };
+        404: { content?: never };
+      };
+    };
+    put: {
+      parameters: { path: { providerId: string } };
+      requestBody: { content: { "application/json": components["schemas"]["ProviderSettingsRequest"] } };
+      responses: {
+        200: { content: { "application/json": components["schemas"]["ProviderSettingsResponse"] } };
+        400: { content?: unknown };
+        404: { content?: never };
       };
     };
   };
@@ -153,6 +166,67 @@ export interface components {
       references: components["schemas"]["ProjectReferenceResponse"][];
       createdUtc: string;
       updatedUtc: string;
+    };
+    ProviderCapability:
+      | "TextGeneration"
+      | "ImageGeneration"
+      | "ImageEditing"
+      | "VideoGeneration"
+      | "ImageToVideo"
+      | "VideoToVideo"
+      | "LipSync"
+      | "Upscale"
+      | "Transcription"
+      | "VisionEvaluation"
+      | "DirectorPlanning";
+    CredentialReferenceKind: "Environment" | "OperatingSystem" | "External";
+    CredentialReference: {
+      kind: components["schemas"]["CredentialReferenceKind"];
+      identifier: string;
+    };
+    ProviderModelResponse: {
+      modelId: string;
+      displayName: string;
+      capabilities: components["schemas"]["ProviderCapability"][];
+      supportsReferences: boolean;
+      supportsStartFrame: boolean;
+      supportsEndFrame: boolean;
+      supportsSeed: boolean;
+      supportsNegativePrompt: boolean;
+      supportsNativeAudio: boolean;
+      maxReferences: number;
+      supportedDurationsSeconds: number[];
+      supportedAspectRatios: string[];
+      supportedResolutions: string[];
+    };
+    ProviderSettingsResponse: {
+      providerId: string;
+      enabled: boolean;
+      credentialReference?: components["schemas"]["CredentialReference"] | null;
+      defaultModels: Partial<Record<components["schemas"]["ProviderCapability"], string>>;
+      maxConcurrency: number;
+      timeoutSeconds: number;
+      maxRetries: number;
+      allowedOperations: components["schemas"]["ProviderCapability"][];
+      priority: number;
+      fallbackPriority: number;
+    };
+    ProviderSettingsRequest: {
+      enabled: boolean;
+      credentialReference?: components["schemas"]["CredentialReference"] | null;
+      defaultModels: Partial<Record<components["schemas"]["ProviderCapability"], string>>;
+      maxConcurrency: number;
+      timeoutSeconds: number;
+      maxRetries: number;
+      allowedOperations: components["schemas"]["ProviderCapability"][];
+      priority: number;
+      fallbackPriority: number;
+    };
+    ProviderCatalogResponse: {
+      id: string;
+      displayName: string;
+      models: components["schemas"]["ProviderModelResponse"][];
+      settings: components["schemas"]["ProviderSettingsResponse"];
     };
   };
 }
