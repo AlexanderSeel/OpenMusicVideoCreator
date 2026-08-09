@@ -1,5 +1,6 @@
 using System.Reflection;
 using OpenMusicVideoCreator.Application.SystemInfo;
+using Xunit;
 using DomainMarker = OpenMusicVideoCreator.Domain.AssemblyMarker;
 using InfrastructureMarker = OpenMusicVideoCreator.Infrastructure.AssemblyMarker;
 
