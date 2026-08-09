@@ -28,7 +28,7 @@ public sealed class MockJobExecutionDispatcher : IJobExecutionDispatcher
                 ProviderFailureCode.RateLimited,
                 "Mock rate limit reached.",
                 Retryable: true,
-                RetryAfter: TimeSpan.FromSeconds(1),
+                RetryAfter: TimeSpan.FromSeconds(30),
                 ProviderCode: "mock_rate_limit")),
             "mock:provider-unavailable" => JobExecutionResult.Failed(new ProviderFailure(
                 ProviderFailureCode.ProviderUnavailable,
