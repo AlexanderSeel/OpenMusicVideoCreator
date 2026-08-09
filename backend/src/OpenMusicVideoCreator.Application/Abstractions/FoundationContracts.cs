@@ -1,12 +1,5 @@
 namespace OpenMusicVideoCreator.Application.Abstractions;
 
-public sealed record ProviderDescriptor(string Id, IReadOnlySet<string> Capabilities);
-
-public interface IProviderCatalog
-{
-    ValueTask<IReadOnlyCollection<ProviderDescriptor>> ListAsync(CancellationToken cancellationToken = default);
-}
-
 public sealed record JobEnvelope(Guid Id, string Type, string Payload);
 
 public interface IJobQueue
