@@ -1,20 +1,18 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 using OpenMusicVideoCreator.Api.Middleware;
 using OpenMusicVideoCreator.Application.SystemInfo;
 using Xunit;
 
 namespace OpenMusicVideoCreator.Api.Tests;
 
-public sealed class SystemEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class SystemEndpointTests : IClassFixture<TestApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly TestApplicationFactory _factory;
 
-    public SystemEndpointTests(WebApplicationFactory<Program> factory)
+    public SystemEndpointTests(TestApplicationFactory factory)
     {
-        _factory = factory.WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
+        _factory = factory;
     }
 
     [Fact]
