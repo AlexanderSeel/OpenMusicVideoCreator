@@ -31,7 +31,8 @@ public sealed class ProjectEndpointTests : IClassFixture<TestApplicationFactory>
         using var getResponse = await client.GetAsync($"/api/projects/{created.Id}");
         getResponse.EnsureSuccessStatusCode();
         var fetched = await getResponse.Content.ReadFromJsonAsync<ProjectResponse>();
-        Assert.Equal(created, fetched);
+        Assert.NotNull(fetched);
+        AssertProjectResponseEqual(created, fetched);
 
         using var updateResponse = await client.PutAsJsonAsync(
             $"/api/projects/{created.Id}",
@@ -53,7 +54,8 @@ public sealed class ProjectEndpointTests : IClassFixture<TestApplicationFactory>
 
         using var deleteResponse = await client.DeleteAsync($"/api/projects/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/projects/{created.Id}")).StatusCode);
+        using var missingResponse = await client.GetAsync($"/api/projects/{created.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, missingResponse.StatusCode);
 
         using var importResponse = await client.PostAsync(
             "/api/projects/import",
@@ -63,6 +65,29 @@ public sealed class ProjectEndpointTests : IClassFixture<TestApplicationFactory>
         Assert.NotNull(imported);
         Assert.Equal(created.Id, imported.Id);
         Assert.Equal("Updated title", imported.Title);
+    }
+
+    private static void AssertProjectResponseEqual(ProjectResponse expected, ProjectResponse actual)
+    {
+        Assert.Equal(expected.Id, actual.Id);
+        Assert.Equal(expected.Title, actual.Title);
+        Assert.Equal(expected.Artist, actual.Artist);
+        Assert.Equal(expected.Lyrics, actual.Lyrics);
+        Assert.Equal(expected.Storyline, actual.Storyline);
+        Assert.Equal(expected.Meaning, actual.Meaning);
+        Assert.Equal(expected.VisualDirection, actual.VisualDirection);
+        Assert.Equal(expected.Mood, actual.Mood);
+        Assert.Equal(expected.Genre, actual.Genre);
+        Assert.Equal(expected.AspectRatio, actual.AspectRatio);
+        Assert.Equal(expected.ResolutionWidth, actual.ResolutionWidth);
+        Assert.Equal(expected.ResolutionHeight, actual.ResolutionHeight);
+        Assert.Equal(expected.TargetPlatforms, actual.TargetPlatforms);
+        Assert.Equal(expected.Preset, actual.Preset);
+        Assert.Equal(expected.EstimatedBudget, actual.EstimatedBudget);
+        Assert.Equal(expected.MaximumBudget, actual.MaximumBudget);
+        Assert.Equal(expected.References, actual.References);
+        Assert.Equal(expected.CreatedUtc, actual.CreatedUtc);
+        Assert.Equal(expected.UpdatedUtc, actual.UpdatedUtc);
     }
 
     private static ProjectUpsertRequest CreateRequest(string title) => new(
