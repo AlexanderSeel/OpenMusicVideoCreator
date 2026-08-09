@@ -116,7 +116,7 @@ public static class ProjectEndpoints
         {
             try
             {
-                await using var stream = file.OpenReadStream(ProjectMediaService.MaxSongBytes);
+                await using var stream = file.OpenReadStream();
                 var song = await mediaService.UploadSongAsync(
                     id,
                     stream,
