@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using OpenMusicVideoCreator.Api.Middleware;
 using OpenMusicVideoCreator.Application.SystemInfo;
+using Xunit;
 
 namespace OpenMusicVideoCreator.Api.Tests;
 
