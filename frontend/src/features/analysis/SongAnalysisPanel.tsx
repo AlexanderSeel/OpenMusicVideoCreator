@@ -145,11 +145,8 @@ export function SongAnalysisPanel({ projectId, songAttached, lyrics }: SongAnaly
               <span>{analysis.codec ?? "audio"} • {analysis.channels ?? "?"} ch</span>
             </div>
             <Waveform analysis={analysis} />
-            <div className="timeline-legend" aria-label="Waveform legend">
-              <span><i className="legend-beat" />beat</span>
-              <span><i className="legend-bar" />bar</span>
-              <span><i className="legend-phrase" />phrase</span>
-              <span><i className="legend-quiet" />quiet</span>
+            <div className="timeline-scale" aria-label="Waveform legend">
+              <span>beat · bar</span><span>phrase band</span><span>quiet shading</span>
             </div>
             <div className="timeline-scale" aria-hidden="true">
               <span>0:00</span><span>{formatDuration(analysis.durationSeconds / 2)}</span><span>{formatDuration(analysis.durationSeconds)}</span>
@@ -215,10 +212,10 @@ function Waveform({ analysis }: { analysis: SongAnalysisResponse }) {
   return (
     <svg className="waveform" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Song waveform with detected beats, bars, phrases, and quiet ranges" preserveAspectRatio="none">
       {analysis.quietRanges.map((range, index) => (
-        <rect key={`quiet-${index}`} className="quiet-range" x={(range.startSeconds / duration) * width} y="0" width={Math.max(1, ((range.endSeconds - range.startSeconds) / duration) * width)} height={height} />
+        <rect key={`quiet-${index}`} x={(range.startSeconds / duration) * width} y="0" width={Math.max(1, ((range.endSeconds - range.startSeconds) / duration) * width)} height={height} fill="rgba(110,231,183,0.08)" />
       ))}
       {analysis.phrases.map((phrase) => (
-        <rect key={`phrase-${phrase.number}`} className="phrase-range" x={(phrase.startSeconds / duration) * width} y="0" width={Math.max(1, ((phrase.endSeconds - phrase.startSeconds) / duration) * width)} height="8" opacity={0.25 + phrase.confidence * 0.5} />
+        <rect key={`phrase-${phrase.number}`} x={(phrase.startSeconds / duration) * width} y="0" width={Math.max(1, ((phrase.endSeconds - phrase.startSeconds) / duration) * width)} height="8" fill="rgba(102,212,255,0.45)" opacity={0.25 + phrase.confidence * 0.5} />
       ))}
       <line className="waveform-zero" x1="0" x2={width} y1={middle} y2={middle} />
       {analysis.waveform.map((bucket, index) => {
@@ -228,7 +225,7 @@ function Waveform({ analysis }: { analysis: SongAnalysisResponse }) {
         return <line key={index} className="waveform-sample" x1={x} x2={x} y1={y1} y2={y2} />;
       })}
       {analysis.beats.map((beat, index) => <line key={`beat-${index}`} className="beat-marker" x1={(beat.timeSeconds / duration) * width} x2={(beat.timeSeconds / duration) * width} y1="10" y2={height} opacity={0.12 + beat.confidence * 0.28} />)}
-      {analysis.bars.map((bar) => <line key={`bar-${bar.number}`} className="bar-marker" x1={(bar.timeSeconds / duration) * width} x2={(bar.timeSeconds / duration) * width} y1="8" y2={height} opacity={0.3 + bar.confidence * 0.5} />)}
+      {analysis.bars.map((bar) => <line key={`bar-${bar.number}`} x1={(bar.timeSeconds / duration) * width} x2={(bar.timeSeconds / duration) * width} y1="8" y2={height} stroke="rgba(255,211,122,0.78)" strokeWidth="1.5" opacity={0.3 + bar.confidence * 0.5} />)}
     </svg>
   );
 }
