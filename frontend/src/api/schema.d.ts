@@ -5,36 +5,20 @@ export interface paths {
   "/api/system/version": {
     get: {
       responses: {
-        200: {
-          content: {
-            "application/json": components["schemas"]["SystemVersionResponse"];
-          };
-        };
+        200: { content: { "application/json": components["schemas"]["SystemVersionResponse"] } };
       };
     };
   };
   "/api/projects/": {
     get: {
       responses: {
-        200: {
-          content: {
-            "application/json": components["schemas"]["ProjectResponse"][];
-          };
-        };
+        200: { content: { "application/json": components["schemas"]["ProjectResponse"][] } };
       };
     };
     post: {
-      requestBody: {
-        content: {
-          "application/json": components["schemas"]["ProjectUpsertRequest"];
-        };
-      };
+      requestBody: { content: { "application/json": components["schemas"]["ProjectUpsertRequest"] } };
       responses: {
-        201: {
-          content: {
-            "application/json": components["schemas"]["ProjectResponse"];
-          };
-        };
+        201: { content: { "application/json": components["schemas"]["ProjectResponse"] } };
       };
     };
   };
@@ -82,11 +66,7 @@ export interface paths {
   "/api/providers/": {
     get: {
       responses: {
-        200: {
-          content: {
-            "application/json": components["schemas"]["ProviderCatalogResponse"][];
-          };
-        };
+        200: { content: { "application/json": components["schemas"]["ProviderCatalogResponse"][] } };
       };
     };
   };
@@ -106,6 +86,94 @@ export interface paths {
         400: { content?: unknown };
         404: { content?: never };
       };
+    };
+  };
+  "/api/jobs/": {
+    get: {
+      responses: {
+        200: { content: { "application/json": components["schemas"]["JobResponse"][] } };
+      };
+    };
+    post: {
+      requestBody: { content: { "application/json": components["schemas"]["JobCreateRequest"] } };
+      responses: {
+        201: { content: { "application/json": components["schemas"]["JobResponse"] } };
+        400: { content?: unknown };
+      };
+    };
+  };
+  "/api/jobs/{id}": {
+    get: {
+      parameters: { path: { id: string } };
+      responses: {
+        200: { content: { "application/json": components["schemas"]["JobResponse"] } };
+        404: { content?: never };
+      };
+    };
+  };
+  "/api/jobs/{id}/attempts": {
+    get: {
+      parameters: { path: { id: string } };
+      responses: {
+        200: { content: { "application/json": components["schemas"]["JobAttemptResponse"][] } };
+        404: { content?: never };
+      };
+    };
+  };
+  "/api/jobs/{id}/dependencies": {
+    get: {
+      parameters: { path: { id: string } };
+      responses: {
+        200: { content: { "application/json": string[] } };
+        404: { content?: never };
+      };
+    };
+  };
+  "/api/jobs/{id}/pause": JobActionPath;
+  "/api/jobs/{id}/resume": JobActionPath;
+  "/api/jobs/{id}/retry": JobActionPath;
+  "/api/jobs/{id}/restart": JobActionPath;
+  "/api/jobs/{id}/cancel": JobActionPath;
+  "/api/jobs/projects/{projectId}/pause": JobProjectActionPath;
+  "/api/jobs/projects/{projectId}/resume": JobProjectActionPath;
+  "/api/jobs/projects/{projectId}/cancel": JobProjectActionPath;
+  "/api/jobs/projects/{projectId}/scenes/{sceneId}/pause": JobSceneActionPath;
+  "/api/jobs/projects/{projectId}/scenes/{sceneId}/resume": JobSceneActionPath;
+  "/api/jobs/projects/{projectId}/scenes/{sceneId}/cancel": JobSceneActionPath;
+  "/api/jobs/events": {
+    get: {
+      responses: {
+        200: { content: { "text/event-stream": string } };
+      };
+    };
+  };
+}
+
+interface JobActionPath {
+  post: {
+    parameters: { path: { id: string } };
+    responses: {
+      200: { content?: unknown };
+      404: { content?: never };
+      409: { content?: never };
+    };
+  };
+}
+
+interface JobProjectActionPath {
+  post: {
+    parameters: { path: { projectId: string } };
+    responses: {
+      200: { content: { "application/json": components["schemas"]["JobScopeActionResponse"] } };
+    };
+  };
+}
+
+interface JobSceneActionPath {
+  post: {
+    parameters: { path: { projectId: string; sceneId: string } };
+    responses: {
+      200: { content: { "application/json": components["schemas"]["JobScopeActionResponse"] } };
     };
   };
 }
@@ -227,6 +295,79 @@ export interface components {
       displayName: string;
       models: components["schemas"]["ProviderModelResponse"][];
       settings: components["schemas"]["ProviderSettingsResponse"];
+    };
+    JobState:
+      | "Draft"
+      | "Queued"
+      | "Submitting"
+      | "ProviderQueued"
+      | "Generating"
+      | "Downloading"
+      | "Validating"
+      | "Completed"
+      | "Paused"
+      | "WaitingForQuota"
+      | "WaitingForProvider"
+      | "WaitingForDependency"
+      | "RetryScheduled"
+      | "Rejected"
+      | "FailedRetryable"
+      | "FailedPermanent"
+      | "Cancelled";
+    JobCreateRequest: {
+      projectId?: string | null;
+      sceneId?: string | null;
+      parentJobId?: string | null;
+      type: string;
+      payloadJson: string;
+      providerId?: string | null;
+      modelId?: string | null;
+      priority: number;
+      maxRetries: number;
+      estimatedCost?: number | null;
+      currency?: string | null;
+      dependencies?: string[] | null;
+    };
+    JobResponse: {
+      id: string;
+      projectId?: string | null;
+      sceneId?: string | null;
+      parentJobId?: string | null;
+      type: string;
+      providerId?: string | null;
+      modelId?: string | null;
+      state: components["schemas"]["JobState"];
+      resumeState?: components["schemas"]["JobState"] | null;
+      priority: number;
+      attemptCount: number;
+      retryCount: number;
+      maxRetries: number;
+      createdUtc: string;
+      updatedUtc: string;
+      nextRunUtc?: string | null;
+      startedUtc?: string | null;
+      completedUtc?: string | null;
+      providerTaskId?: string | null;
+      errorCode?: string | null;
+      errorMessage?: string | null;
+      estimatedCost?: number | null;
+      actualCost?: number | null;
+      currency?: string | null;
+    };
+    JobAttemptResponse: {
+      attemptNumber: number;
+      startedUtc: string;
+      completedUtc?: string | null;
+      state: components["schemas"]["JobState"];
+      providerTaskId?: string | null;
+      errorCode?: string | null;
+      errorMessage?: string | null;
+      estimatedCost?: number | null;
+      actualCost?: number | null;
+      currency?: string | null;
+    };
+    JobScopeActionResponse: {
+      affectedJobs: number;
     };
   };
 }
