@@ -1,11 +1,14 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using OpenMusicVideoCreator.Api.Endpoints;
+using OpenMusicVideoCreator.Api.Jobs;
 using OpenMusicVideoCreator.Api.Middleware;
 using OpenMusicVideoCreator.Application.Abstractions;
+using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Application.Projects;
 using OpenMusicVideoCreator.Application.Providers;
 using OpenMusicVideoCreator.Application.SystemInfo;
+using OpenMusicVideoCreator.Infrastructure.Jobs;
 using OpenMusicVideoCreator.Infrastructure.Media;
 using OpenMusicVideoCreator.Infrastructure.Persistence;
 using OpenMusicVideoCreator.Infrastructure.Providers;
@@ -75,6 +78,19 @@ builder.Services.AddSingleton<IVideoGenerationProvider>(services => services.Get
 builder.Services.AddSingleton<IImageToVideoProvider>(services => services.GetRequiredService<MockVideoProvider>());
 builder.Services.AddSingleton<IVideoToVideoProvider>(services => services.GetRequiredService<MockVideoProvider>());
 
+builder.Services.AddSingleton<IJobRepository, DuckDbJobRepository>();
+builder.Services.AddSingleton<JobChangeHub>();
+builder.Services.AddSingleton<IJobChangePublisher>(services => services.GetRequiredService<JobChangeHub>());
+builder.Services.AddSingleton<IJobChangeStream>(services => services.GetRequiredService<JobChangeHub>());
+builder.Services.AddSingleton<JobService>();
+builder.Services.AddSingleton<IJobQueue>(services => services.GetRequiredService<JobService>());
+builder.Services.AddSingleton<IJobExecutionDispatcher, MockJobExecutionDispatcher>();
+builder.Services.AddSingleton<JobProcessor>();
+if (builder.Configuration.GetValue("Jobs:WorkerEnabled", true))
+{
+    builder.Services.AddHostedService<PersistentJobWorker>();
+}
+
 var app = builder.Build();
 
 await app.Services.GetRequiredService<IApplicationPersistence>().InitializeAsync();
@@ -104,6 +120,7 @@ app.MapGet("/api/system/version", (IHostEnvironment environment) =>
 
 app.MapProjectEndpoints();
 app.MapProviderEndpoints();
+app.MapJobEndpoints();
 
 app.Run();
 
