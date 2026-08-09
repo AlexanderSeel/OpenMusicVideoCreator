@@ -137,6 +137,7 @@ app.MapGet("/api/system/version", (IHostEnvironment environment) =>
     .Produces<SystemVersionResponse>(StatusCodes.Status200OK);
 
 app.MapProjectEndpoints();
+app.MapSongAnalysisEndpoints();
 app.MapProviderEndpoints();
 app.MapJobEndpoints();
 
