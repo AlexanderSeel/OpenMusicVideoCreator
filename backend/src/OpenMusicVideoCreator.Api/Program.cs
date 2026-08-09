@@ -4,9 +4,11 @@ using OpenMusicVideoCreator.Api.Endpoints;
 using OpenMusicVideoCreator.Api.Middleware;
 using OpenMusicVideoCreator.Application.Abstractions;
 using OpenMusicVideoCreator.Application.Projects;
+using OpenMusicVideoCreator.Application.Providers;
 using OpenMusicVideoCreator.Application.SystemInfo;
 using OpenMusicVideoCreator.Infrastructure.Media;
 using OpenMusicVideoCreator.Infrastructure.Persistence;
+using OpenMusicVideoCreator.Infrastructure.Providers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -59,6 +61,20 @@ builder.Services.AddSingleton<IMediaAssetRepository, DuckDbMediaAssetRepository>
 builder.Services.AddSingleton<IMediaStorage, LocalMediaStorage>();
 builder.Services.AddSingleton<ProjectService>();
 
+builder.Services.AddSingleton<IProviderCatalog, MockProviderCatalog>();
+builder.Services.AddSingleton<ICredentialResolver, CredentialResolver>();
+builder.Services.AddSingleton<ProviderSettingsService>();
+builder.Services.AddSingleton<MockProviderControl>();
+builder.Services.AddSingleton<MockDirectorProvider>();
+builder.Services.AddSingleton<IDirectorProvider>(services => services.GetRequiredService<MockDirectorProvider>());
+builder.Services.AddSingleton<MockImageProvider>();
+builder.Services.AddSingleton<IImageGenerationProvider>(services => services.GetRequiredService<MockImageProvider>());
+builder.Services.AddSingleton<IImageEditingProvider>(services => services.GetRequiredService<MockImageProvider>());
+builder.Services.AddSingleton<MockVideoProvider>();
+builder.Services.AddSingleton<IVideoGenerationProvider>(services => services.GetRequiredService<MockVideoProvider>());
+builder.Services.AddSingleton<IImageToVideoProvider>(services => services.GetRequiredService<MockVideoProvider>());
+builder.Services.AddSingleton<IVideoToVideoProvider>(services => services.GetRequiredService<MockVideoProvider>());
+
 var app = builder.Build();
 
 await app.Services.GetRequiredService<IApplicationPersistence>().InitializeAsync();
@@ -87,6 +103,7 @@ app.MapGet("/api/system/version", (IHostEnvironment environment) =>
     .Produces<SystemVersionResponse>(StatusCodes.Status200OK);
 
 app.MapProjectEndpoints();
+app.MapProviderEndpoints();
 
 app.Run();
 
