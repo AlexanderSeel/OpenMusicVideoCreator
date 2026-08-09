@@ -17,6 +17,14 @@ test("frontend keeps typed bootstrap, project, provider, and job API contracts",
   assert.match(schema, /"\/api\/projects\/"/);
   assert.match(schema, /ProjectUpsertRequest/);
   assert.match(schema, /ProjectResponse/);
+  assert.match(client, /listProjects/);
+  assert.match(client, /createProject/);
+  assert.match(client, /updateProject/);
+  assert.match(client, /deleteProject/);
+  assert.match(client, /uploadProjectSong/);
+  assert.match(schema, /"\/api\/projects\/\{id\}\/song"/);
+  assert.match(schema, /ProjectSongResponse/);
+  assert.match(schema, /"Song" \| "Character"/);
   assert.match(client, /paths\["\/api\/providers\/"\]/);
   assert.match(client, /\/api\/providers\//);
   assert.match(schema, /ProviderCatalogResponse/);
