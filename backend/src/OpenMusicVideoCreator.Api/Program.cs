@@ -63,6 +63,7 @@ builder.Services.AddSingleton<IProjectSettingsRepository>(services => services.G
 builder.Services.AddSingleton<IMediaAssetRepository, DuckDbMediaAssetRepository>();
 builder.Services.AddSingleton<IMediaStorage, LocalMediaStorage>();
 builder.Services.AddSingleton<ProjectService>();
+builder.Services.AddSingleton<ProjectMediaService>();
 
 builder.Services.AddSingleton<IProviderCatalog, MockProviderCatalog>();
 builder.Services.AddSingleton<ICredentialResolver, CredentialResolver>();
