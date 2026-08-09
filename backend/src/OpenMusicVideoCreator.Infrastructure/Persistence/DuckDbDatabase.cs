@@ -5,7 +5,7 @@ namespace OpenMusicVideoCreator.Infrastructure.Persistence;
 
 public sealed class DuckDbDatabase : IApplicationPersistence
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private readonly DuckDbConnectionFactory _connections;
 
     public DuckDbDatabase(DuckDbConnectionFactory connections)
@@ -39,6 +39,12 @@ public sealed class DuckDbDatabase : IApplicationPersistence
         if (currentVersion < 1)
         {
             await ApplyVersionOneAsync(connection, cancellationToken);
+            currentVersion = 1;
+        }
+
+        if (currentVersion < 2)
+        {
+            await ApplyVersionTwoAsync(connection, cancellationToken);
         }
     }
 
@@ -142,6 +148,79 @@ public sealed class DuckDbDatabase : IApplicationPersistence
 
             INSERT INTO schema_migrations(version, applied_utc)
             VALUES (1, current_timestamp);
+            """;
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static async Task ApplyVersionTwoAsync(
+        DuckDBConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            CREATE TABLE jobs (
+                id UUID PRIMARY KEY,
+                project_id UUID,
+                scene_id UUID,
+                parent_job_id UUID,
+                job_type VARCHAR NOT NULL,
+                payload_json VARCHAR NOT NULL,
+                provider_id VARCHAR,
+                model_id VARCHAR,
+                state VARCHAR NOT NULL,
+                resume_state VARCHAR,
+                priority INTEGER NOT NULL,
+                attempt_count INTEGER NOT NULL,
+                retry_count INTEGER NOT NULL,
+                max_retries INTEGER NOT NULL,
+                created_utc TIMESTAMPTZ NOT NULL,
+                updated_utc TIMESTAMPTZ NOT NULL,
+                next_run_utc TIMESTAMPTZ,
+                started_utc TIMESTAMPTZ,
+                completed_utc TIMESTAMPTZ,
+                provider_task_id VARCHAR,
+                error_code VARCHAR,
+                error_message VARCHAR,
+                estimated_cost DECIMAL(18, 4),
+                actual_cost DECIMAL(18, 4),
+                currency VARCHAR,
+                claimed_by VARCHAR,
+                claim_expires_utc TIMESTAMPTZ
+            );
+
+            CREATE TABLE job_dependencies (
+                job_id UUID NOT NULL,
+                depends_on_job_id UUID NOT NULL,
+                PRIMARY KEY (job_id, depends_on_job_id)
+            );
+
+            CREATE TABLE job_attempts (
+                job_id UUID NOT NULL,
+                attempt_number INTEGER NOT NULL,
+                started_utc TIMESTAMPTZ NOT NULL,
+                completed_utc TIMESTAMPTZ,
+                state VARCHAR NOT NULL,
+                provider_task_id VARCHAR,
+                error_code VARCHAR,
+                error_message VARCHAR,
+                estimated_cost DECIMAL(18, 4),
+                actual_cost DECIMAL(18, 4),
+                currency VARCHAR,
+                PRIMARY KEY (job_id, attempt_number)
+            );
+
+            CREATE INDEX idx_jobs_state_schedule ON jobs(state, next_run_utc, priority, created_utc);
+            CREATE INDEX idx_jobs_project_id ON jobs(project_id);
+            CREATE INDEX idx_jobs_scene_id ON jobs(scene_id);
+            CREATE INDEX idx_jobs_parent_job_id ON jobs(parent_job_id);
+            CREATE INDEX idx_job_dependencies_dependency ON job_dependencies(depends_on_job_id);
+
+            INSERT INTO schema_migrations(version, applied_utc)
+            VALUES (2, current_timestamp);
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
