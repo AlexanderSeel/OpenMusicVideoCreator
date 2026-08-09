@@ -26,7 +26,8 @@ public sealed class PersistenceIntegrationTests
         var secondRepository = new DuckDbProjectRepository(secondFactory);
         var restored = await secondRepository.GetAsync(project.Id);
 
-        Assert.Equal(project, restored);
+        Assert.NotNull(restored);
+        AssertProjectEqual(project, restored);
     }
 
     [Fact]
@@ -70,7 +71,7 @@ public sealed class PersistenceIntegrationTests
             TimeSpan.FromSeconds(3),
             stored.FileSize,
             MediaCreationSource.Uploaded,
-            DateTimeOffset.UtcNow);
+            FixedUtc());
         await persistence.Media.UpsertAsync(asset);
 
         var restored = await persistence.Media.GetAsync(asset.Id);
@@ -104,9 +105,11 @@ public sealed class PersistenceIntegrationTests
         var json = await service.ExportAsync(original.Id);
         Assert.True(await service.DeleteAsync(original.Id));
         var imported = await service.ImportAsync(json);
+        var restored = await persistence.Projects.GetAsync(original.Id);
 
-        Assert.Equal(original, imported);
-        Assert.Equal(original, await persistence.Projects.GetAsync(original.Id));
+        AssertProjectEqual(original, imported);
+        Assert.NotNull(restored);
+        AssertProjectEqual(original, restored);
     }
 
     [Fact]
@@ -128,14 +131,14 @@ public sealed class PersistenceIntegrationTests
             TimeSpan.FromSeconds(6),
             4096,
             MediaCreationSource.Generated,
-            DateTimeOffset.UtcNow);
+            FixedUtc());
         await persistence.Media.UpsertAsync(asset);
 
         var replacementDraft = CreateDraft() with
         {
             References = [new ProjectReference(ProjectReferenceKind.Style, Guid.NewGuid())],
         };
-        await persistence.Projects.UpsertAsync(original.Update(replacementDraft, DateTimeOffset.UtcNow));
+        await persistence.Projects.UpsertAsync(original.Update(replacementDraft, FixedUtc().AddMinutes(5)));
 
         Assert.Equal(asset, await persistence.Media.GetAsync(asset.Id));
     }
@@ -162,11 +165,8 @@ public sealed class PersistenceIntegrationTests
             new DuckDbMediaAssetRepository(factory));
     }
 
-    private static MusicVideoProject CreateProject()
-    {
-        var now = new DateTimeOffset(2026, 8, 9, 10, 0, 0, TimeSpan.Zero);
-        return MusicVideoProject.Create(Guid.NewGuid(), CreateDraft(), now);
-    }
+    private static MusicVideoProject CreateProject() =>
+        MusicVideoProject.Create(Guid.NewGuid(), CreateDraft(), FixedUtc());
 
     private static ProjectDraft CreateDraft() => new(
         "Persistence Test",
@@ -187,6 +187,31 @@ public sealed class PersistenceIntegrationTests
             new ProjectReference(ProjectReferenceKind.Character, Guid.Parse("11111111-1111-4111-8111-111111111111")),
             new ProjectReference(ProjectReferenceKind.Style, Guid.Parse("22222222-2222-4222-8222-222222222222")),
         ]);
+
+    private static DateTimeOffset FixedUtc() =>
+        new(2026, 8, 9, 10, 0, 0, TimeSpan.Zero);
+
+    private static void AssertProjectEqual(MusicVideoProject expected, MusicVideoProject actual)
+    {
+        Assert.Equal(expected.Id, actual.Id);
+        Assert.Equal(expected.Title, actual.Title);
+        Assert.Equal(expected.Artist, actual.Artist);
+        Assert.Equal(expected.Lyrics, actual.Lyrics);
+        Assert.Equal(expected.Storyline, actual.Storyline);
+        Assert.Equal(expected.Meaning, actual.Meaning);
+        Assert.Equal(expected.VisualDirection, actual.VisualDirection);
+        Assert.Equal(expected.Mood, actual.Mood);
+        Assert.Equal(expected.Genre, actual.Genre);
+        Assert.Equal(expected.AspectRatio, actual.AspectRatio);
+        Assert.Equal(expected.Resolution, actual.Resolution);
+        Assert.Equal(expected.TargetPlatforms, actual.TargetPlatforms);
+        Assert.Equal(expected.Preset, actual.Preset);
+        Assert.Equal(expected.EstimatedBudget, actual.EstimatedBudget);
+        Assert.Equal(expected.MaximumBudget, actual.MaximumBudget);
+        Assert.Equal(expected.References, actual.References);
+        Assert.Equal(expected.CreatedUtc, actual.CreatedUtc);
+        Assert.Equal(expected.UpdatedUtc, actual.UpdatedUtc);
+    }
 
     private sealed record PersistenceSet(
         DuckDbProjectRepository Projects,
