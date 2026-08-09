@@ -97,12 +97,14 @@ public sealed class DuckDbDatabase : IApplicationPersistence
 
             CREATE TABLE project_targets (
                 project_id UUID NOT NULL,
+                sort_order INTEGER NOT NULL,
                 platform VARCHAR NOT NULL,
                 PRIMARY KEY (project_id, platform)
             );
 
             CREATE TABLE project_references (
                 project_id UUID NOT NULL,
+                sort_order INTEGER NOT NULL,
                 reference_kind VARCHAR NOT NULL,
                 reference_id UUID NOT NULL,
                 PRIMARY KEY (project_id, reference_kind, reference_id)
