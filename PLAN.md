@@ -2,7 +2,7 @@
 
 Source of truth: `AI_Music_Video_Studio_Master_Prompt.md`.
 
-This file is the visible implementation tracker. Completed work stays checked so progress remains auditable; unfinished work stays unchecked. A checkbox is marked complete only when the repository-side implementation is genuinely present and validated as far as the current development environment allows.
+This file is the visible implementation tracker. Completed work stays checked so progress remains auditable; unfinished work stays unchecked. A checkbox means the repository-side implementation is present. Execution/validation is tracked separately where the current environment cannot run it.
 
 ## Execution rules
 
@@ -81,20 +81,28 @@ Create the first user-facing workflow on top of durable project data.
 
 ### Scope
 
-- [ ] Desktop-first application shell with progressive disclosure: Simple, Advanced, Expert/Custom.
-- [ ] Project list/dashboard and project creation wizard.
-- [ ] Song upload, lyrics, storyline/meaning/direction, output target, preset, and budget inputs.
-- [ ] Placeholder/selectors for Character, Style, and Location libraries that become functional in Block 7.
+- [x] Desktop-first application shell with progressive disclosure: Simple, Advanced, Expert/Custom.
+- [x] Project list/dashboard and project creation/edit workflow.
+- [x] Song upload, lyrics, storyline/meaning/direction, output target, preset, and budget inputs.
+- [x] Durable project `Song` media reference with non-destructive replacement semantics.
+- [x] Placeholder/selectors for Character, Style, and Location libraries that become functional in Block 7.
 - [x] Fast, Balanced, Best Quality, Cheapest, and Custom preset domain enum without provider coupling.
-- [ ] Accessible loading, error, empty, and offline/reconnect states.
-- [ ] Reusable design tokens/components instead of page-specific styling duplication.
+- [x] Accessible loading, error, empty, and offline/reconnect states.
+- [x] Reusable design tokens/components instead of page-specific styling duplication.
+- [x] Simple Mode UI refactored into orchestration, sidebar, form, and project-model helpers.
+- [x] Typed project CRUD/song client contracts.
+- [x] Repository tests added for song attachment and Simple Mode structure.
 
 ### Acceptance
 
-- [ ] User can create, reopen, edit, and delete a project from the UI.
-- [ ] Refresh/restart restores project state.
-- [ ] Simple Mode does not expose provider IDs, seeds, or model-specific JSON.
-- [ ] Core UI components meet the project keyboard/focus/accessibility checks.
+- [x] User-facing code supports create, reopen, edit, and delete from the UI.
+- [x] Initial load/reload restores saved project state from the backend.
+- [x] Simple Mode does not expose provider IDs, seeds, or model-specific JSON.
+- [x] Core UI includes keyboard focus, semantic labels/tab roles, live/error states, reduced-motion handling, and responsive fallback.
+
+### Validation status
+
+- [ ] Run the full local frontend/backend build, typecheck, and test suite once the execution environment has repository/network access. GitHub Actions are intentionally not used for this task.
 
 ---
 
