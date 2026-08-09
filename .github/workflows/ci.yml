@@ -50,7 +50,10 @@ jobs:
       system_tests: ${{ steps.system_tests.outcome }}
       project_tests: ${{ steps.project_tests.outcome }}
       persistence_tests: ${{ steps.persistence_tests.outcome }}
-      provider_tests: ${{ steps.provider_tests.outcome }}
+      provider_catalog_test: ${{ steps.provider_catalog_test.outcome }}
+      provider_secret_test: ${{ steps.provider_secret_test.outcome }}
+      provider_validation_test: ${{ steps.provider_validation_test.outcome }}
+      provider_mock_test: ${{ steps.provider_mock_test.outcome }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -95,11 +98,29 @@ jobs:
         continue-on-error: true
         run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~PersistenceIntegrationTests
 
-      - id: provider_tests
-        name: Provider subsystem tests
+      - id: provider_catalog_test
+        name: Provider catalog test
         if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
         continue-on-error: true
-        run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProviderSubsystemTests
+        run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProviderApi_ListsCapabilityDrivenMockCatalog
+
+      - id: provider_secret_test
+        name: Provider secret persistence test
+        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProviderSettings_PersistReferenceButNeverSecretValue
+
+      - id: provider_validation_test
+        name: Provider settings validation test
+        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ProviderSettings_RejectUnsupportedModelCapabilityPair
+
+      - id: provider_mock_test
+        name: Mock provider behavior test
+        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet test backend/tests/OpenMusicVideoCreator.Api.Tests/OpenMusicVideoCreator.Api.Tests.csproj -c Release --no-build --filter FullyQualifiedName~MockProviders_NormalizeSuccessDelayAndFailureScenarios
 
       - name: Enforce backend result
         if: ${{ always() }}
@@ -110,7 +131,10 @@ jobs:
           SYSTEM_RESULT: ${{ steps.system_tests.outcome }}
           PROJECT_RESULT: ${{ steps.project_tests.outcome }}
           PERSISTENCE_RESULT: ${{ steps.persistence_tests.outcome }}
-          PROVIDER_RESULT: ${{ steps.provider_tests.outcome }}
+          PROVIDER_CATALOG_RESULT: ${{ steps.provider_catalog_test.outcome }}
+          PROVIDER_SECRET_RESULT: ${{ steps.provider_secret_test.outcome }}
+          PROVIDER_VALIDATION_RESULT: ${{ steps.provider_validation_test.outcome }}
+          PROVIDER_MOCK_RESULT: ${{ steps.provider_mock_test.outcome }}
         run: |
           if [ "$RESTORE_RESULT" != "success" ] || \
              [ "$BUILD_RESULT" != "success" ] || \
@@ -118,8 +142,11 @@ jobs:
              [ "$SYSTEM_RESULT" != "success" ] || \
              [ "$PROJECT_RESULT" != "success" ] || \
              [ "$PERSISTENCE_RESULT" != "success" ] || \
-             [ "$PROVIDER_RESULT" != "success" ]; then
-            echo "Backend validation failed: restore=$RESTORE_RESULT build=$BUILD_RESULT architecture=$ARCHITECTURE_RESULT system=$SYSTEM_RESULT project=$PROJECT_RESULT persistence=$PERSISTENCE_RESULT provider=$PROVIDER_RESULT"
+             [ "$PROVIDER_CATALOG_RESULT" != "success" ] || \
+             [ "$PROVIDER_SECRET_RESULT" != "success" ] || \
+             [ "$PROVIDER_VALIDATION_RESULT" != "success" ] || \
+             [ "$PROVIDER_MOCK_RESULT" != "success" ]; then
+            echo "Backend validation failed: restore=$RESTORE_RESULT build=$BUILD_RESULT architecture=$ARCHITECTURE_RESULT system=$SYSTEM_RESULT project=$PROJECT_RESULT persistence=$PERSISTENCE_RESULT provider_catalog=$PROVIDER_CATALOG_RESULT provider_secret=$PROVIDER_SECRET_RESULT provider_validation=$PROVIDER_VALIDATION_RESULT provider_mock=$PROVIDER_MOCK_RESULT"
             exit 1
           fi
 
@@ -143,7 +170,10 @@ jobs:
           SYSTEM_RESULT: ${{ needs.backend.outputs.system_tests }}
           PROJECT_RESULT: ${{ needs.backend.outputs.project_tests }}
           PERSISTENCE_RESULT: ${{ needs.backend.outputs.persistence_tests }}
-          PROVIDER_RESULT: ${{ needs.backend.outputs.provider_tests }}
+          PROVIDER_CATALOG_RESULT: ${{ needs.backend.outputs.provider_catalog_test }}
+          PROVIDER_SECRET_RESULT: ${{ needs.backend.outputs.provider_secret_test }}
+          PROVIDER_VALIDATION_RESULT: ${{ needs.backend.outputs.provider_validation_test }}
+          PROVIDER_MOCK_RESULT: ${{ needs.backend.outputs.provider_mock_test }}
         run: |
           post_status() {
             local context="$1"
@@ -170,7 +200,10 @@ jobs:
           system_state=$(to_state "$SYSTEM_RESULT")
           project_state=$(to_state "$PROJECT_RESULT")
           persistence_state=$(to_state "$PERSISTENCE_RESULT")
-          provider_state=$(to_state "$PROVIDER_RESULT")
+          provider_catalog_state=$(to_state "$PROVIDER_CATALOG_RESULT")
+          provider_secret_state=$(to_state "$PROVIDER_SECRET_RESULT")
+          provider_validation_state=$(to_state "$PROVIDER_VALIDATION_RESULT")
+          provider_mock_state=$(to_state "$PROVIDER_MOCK_RESULT")
 
           post_status "ci/frontend" "$frontend_state" "frontend=$FRONTEND_RESULT"
           post_status "ci/backend/restore" "$restore_state" "restore=$RESTORE_RESULT"
@@ -179,7 +212,10 @@ jobs:
           post_status "ci/backend/test/system" "$system_state" "system=$SYSTEM_RESULT"
           post_status "ci/backend/test/project" "$project_state" "project=$PROJECT_RESULT"
           post_status "ci/backend/test/persistence" "$persistence_state" "persistence=$PERSISTENCE_RESULT"
-          post_status "ci/backend/test/provider" "$provider_state" "provider=$PROVIDER_RESULT"
+          post_status "ci/backend/test/provider-catalog" "$provider_catalog_state" "provider_catalog=$PROVIDER_CATALOG_RESULT"
+          post_status "ci/backend/test/provider-secret" "$provider_secret_state" "provider_secret=$PROVIDER_SECRET_RESULT"
+          post_status "ci/backend/test/provider-validation" "$provider_validation_state" "provider_validation=$PROVIDER_VALIDATION_RESULT"
+          post_status "ci/backend/test/provider-mock" "$provider_mock_state" "provider_mock=$PROVIDER_MOCK_RESULT"
           post_status "ci/backend" "$backend_state" "backend=$BACKEND_RESULT"
 
           combined_state=success
