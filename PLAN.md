@@ -2,7 +2,7 @@
 
 Source of truth: `AI_Music_Video_Studio_Master_Prompt.md`.
 
-This file is the visible implementation tracker. Completed work stays checked so progress remains auditable; unfinished work stays unchecked. A checkbox means the repository-side implementation is present. Execution/validation is tracked separately where the current environment cannot run it.
+This file is the visible **implementation tracker**. Completed repository-side implementation stays checked so progress remains auditable; unfinished implementation stays unchecked. Executable proof is tracked separately in `TESTPLAN.md` and may remain pending when the current environment cannot run the repository.
 
 ## Execution rules
 
@@ -16,8 +16,10 @@ This file is the visible implementation tracker. Completed work stays checked so
 - Never overwrite a successful generated asset when regenerating. New attempts create new versions/variants.
 - Never store provider API keys in DuckDB or project files.
 - Never require paid provider calls in automated tests. Mock/fake providers must cover success and failure paths.
+- Add repository-side automated test code with the implementation where behavior can reasonably be automated.
+- Move build/lint/typecheck/unit/integration/browser/FFmpeg/manual checks that have not actually run to `TESTPLAN.md`; do not block implementation solely because execution is unavailable.
 - Do not claim tests, builds, type checks, rendering checks, or provider integrations passed unless they actually ran successfully.
-- Keep `README.md`, `ARCHITECTURE.md`, and this plan current as implementation progresses.
+- Keep `README.md`, `ARCHITECTURE.md`, `PLAN.md`, and `TESTPLAN.md` current as implementation progresses.
 
 ---
 
@@ -93,37 +95,39 @@ Create the first user-facing workflow on top of durable project data.
 - [x] Typed project CRUD/song client contracts.
 - [x] Repository tests added for song attachment and Simple Mode structure.
 
-### Acceptance
+### Acceptance implementation
 
 - [x] User-facing code supports create, reopen, edit, and delete from the UI.
 - [x] Initial load/reload restores saved project state from the backend.
 - [x] Simple Mode does not expose provider IDs, seeds, or model-specific JSON.
 - [x] Core UI includes keyboard focus, semantic labels/tab roles, live/error states, reduced-motion handling, and responsive fallback.
 
-### Validation status
-
-- [ ] Run the full local frontend/backend build, typecheck, and test suite once the execution environment has repository/network access. GitHub Actions are intentionally not used for this task.
+Execution proof for this block is tracked in `TESTPLAN.md`.
 
 ---
 
 ## Block 6 — Song ingestion, analysis, waveform, and editable Structure Map
 
-- [ ] Use ffprobe/FFmpeg for authoritative media metadata and deterministic media preparation where applicable.
-- [ ] Implement song analysis pipeline for duration, BPM/beat candidates, bars, phrases, energy/dynamics, quiet sections, vocal/instrumental estimates, and section suggestions.
-- [ ] Evaluate/reuse relevant concepts from the HyperFrames `music-to-video` skill without coupling application architecture to HyperFrames.
-- [ ] Persist analysis and versions.
-- [ ] Generate waveform data suitable for efficient frontend rendering.
-- [ ] Implement editable Structure Map with song sections and boundaries.
-- [ ] Implement beat/bar/section markers and lyrics lane.
-- [ ] Add optional transcription-assisted lyric timing while preserving supplied lyrics as authoritative text.
-- [ ] Changes to analysis/sections version or invalidate only dependent downstream artifacts.
+- [x] Use ffprobe/FFmpeg for authoritative media metadata and deterministic local media analysis where applicable.
+- [x] Implement song analysis pipeline for duration, BPM/beat candidates, bars, phrases, energy/dynamics, quiet sections, heuristic vocal/instrumental estimates, and section suggestions.
+- [x] Evaluate/reuse relevant music-to-video concepts (music-first timing, waveform, beat/phrase segmentation, editable storyboard-driving structure) without coupling runtime architecture to HyperFrames.
+- [x] Persist immutable song analysis versions in DuckDB.
+- [x] Generate bounded waveform data suitable for efficient frontend rendering without retaining full decoded audio in application memory.
+- [x] Implement editable Structure Map with song sections and boundaries.
+- [x] Implement beat/bar/phrase/quiet markers and authoritative lyrics lane.
+- [x] Add provider-neutral transcription-assisted lyric timing while preserving supplied lyrics as authoritative text.
+- [x] Persist independent lyric-timing versions linked to the source asset and exact song-analysis ID.
+- [x] Changes to analysis/sections create new provenance IDs/versions so downstream artifacts can depend on exact analysis versions without destructive invalidation.
+- [x] Repository-side tests cover analysis/versioning/rhythm inference/section boundaries and lyric timing preservation/versioning.
 
-### Acceptance
+### Acceptance implementation
 
-- [ ] Uploaded audio produces persisted analysis and visible waveform/Structure Map.
-- [ ] User can adjust section boundaries and labels and reopen them after restart.
-- [ ] Supplied lyrics remain unchanged by transcription assistance unless the user edits them.
-- [ ] Tests cover analysis persistence, boundary validation, and downstream invalidation rules.
+- [x] Uploaded audio has an implemented path to persisted local analysis and visible waveform/Structure Map.
+- [x] User can edit section boundaries/labels; saves create persistent analysis versions that can be reopened.
+- [x] Supplied lyrics remain unchanged by transcription assistance; only timing/confidence metadata is attached.
+- [x] Low-information signal/transcription paths may return uncertain/null/unmatched estimates rather than fabricating certainty.
+
+Execution proof for FFmpeg, persistence restart, browser rendering, and the complete local test suite is tracked in `TESTPLAN.md`.
 
 ---
 
