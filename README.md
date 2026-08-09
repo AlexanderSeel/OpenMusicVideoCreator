@@ -1,49 +1,46 @@
 # OpenMusicVideoCreator
 
-OpenMusicVideoCreator is an AI-assisted music-video studio designed around an editable, resumable workflow:
+OpenMusicVideoCreator is an AI-assisted music-video studio built around an editable, resumable workflow:
 
 **Song → Analysis → Storyboard → Keyframes → Animated clips → Review/regenerate → Final video**
 
-The product specification lives in `AI_Music_Video_Studio_Master_Prompt.md`. `PLAN.md` is the visible checkbox-based implementation tracker.
+The product specification is `AI_Music_Video_Studio_Master_Prompt.md`. `PLAN.md` is the checkbox-based implementation tracker.
 
 ## Current implementation
 
-The repository currently contains the executable foundation, durable project/provider persistence, restart-safe asynchronous jobs, and the first user-facing Simple Mode workflow:
+The repository currently includes:
 
 - Next.js 16 + React 19 + TypeScript frontend
 - ASP.NET Core .NET 10 modular backend: Domain, Application, Infrastructure, API
-- typed frontend/backend API contract based on ASP.NET OpenAPI + `openapi-typescript`
-- DuckDB authoritative metadata persistence using `DuckDB.NET.Data.Full`
-- durable project model, project/application settings, filesystem media storage, project CRUD, and portable project JSON
-- desktop-first Simple Mode project dashboard/editor with responsive fallback
-- project create/reopen/edit/delete workflow backed by the durable project API
-- project inputs for title, artist, lyrics, storyline, meaning, visual direction, mood, genre, output aspect/target, preset, and budgets
-- Simple/Advanced/Expert progressive-disclosure tabs; only Simple is enabled in the current block
-- Character/Style/Location library placeholders without fake local implementations before Block 7
-- accessible loading/error/empty/offline states, keyboard focus treatment, reduced-motion handling, and responsive layout
-- durable song attachment using the existing media-storage abstraction and `ProjectReferenceKind.Song`
-- song upload validation for supported audio extensions/MIME types, safe leaf filenames, non-empty content, and a 512 MB maximum
-- replacing a project song creates a new media asset/reference without silently deleting the previous media asset
-- provider-independent capability interfaces, capability-aware model catalog, persisted safe provider settings, credential references, normalized provider failures, and offline mock Director/Image/Video providers
-- persistent jobs, attempts, dependencies, provider task IDs, retry metadata, costs, scheduling, parent/scene/project associations, and claim leases
-- explicit job state machine covering queued/provider/processing/waiting/retry/rejected/permanent/paused/cancelled/completed states
-- background `PersistentJobWorker` with safe one-process claiming and restart recovery
-- dependency release/failure propagation, bounded retry scheduling, quota/provider waits, pause/resume/retry/restart/cancel controls at job/project/scene scope
-- protection against re-submitting provider work when a persisted provider task ID already exists
-- SSE job-change stream that reloads persisted state before emission; DuckDB, not the stream, is authoritative
-- typed frontend project/provider/job/song contracts
-- repository tests for project CRUD, song attachment semantics, provider behavior, persistent job behavior, and Simple Mode structure
+- DuckDB authoritative metadata persistence
+- filesystem media storage with SHA-256 metadata and path-traversal protection
+- desktop-first Simple Mode project dashboard/editor
+- project create/reopen/edit/delete
+- song upload/attachment with non-destructive replacement
+- lyrics, storyline, meaning, visual direction, mood, genre, output target, preset, and budget inputs
+- Character/Style/Location placeholders for the later reusable-library block
+- local ffprobe metadata extraction
+- streaming FFmpeg waveform/energy analysis
+- beat candidates and BPM estimate
+- derived four-beat bars, four-bar phrases, and quiet ranges
+- versioned DuckDB song analyses
+- visible waveform, beat/bar/phrase markers, quiet shading, and supplied-lyrics lane
+- editable/versioned Structure Map section labels/types/start/end boundaries
+- provider-independent AI capability contracts, safe credential references, provider settings, and offline mock Director/Image/Video providers
+- persistent asynchronous job state, dependencies, attempts, retry/wait/recovery semantics, and SSE status updates
+- typed frontend project/song/analysis/provider/job API contracts
 
-Real paid AI adapters, song analysis, storyboard generation, generation-specific provider dispatch, FFmpeg rendering, reusable visual libraries, and the Advanced Editor remain unfinished and are tracked in `PLAN.md`.
+Still unfinished in the current song-analysis block: vocal/instrumental classification and optional transcription-assisted lyric timing. Storyboard generation, real image/video generation adapters, asset libraries, rendering, and Advanced Editor work are tracked later in `PLAN.md`.
 
 ## Prerequisites
 
-- Node.js 22 or newer
-- npm 10 or newer
+- Node.js 22+
+- npm 10+
 - .NET 10 SDK
 - Git
+- **FFmpeg + ffprobe** available on `PATH`
 
-FFmpeg becomes a runtime prerequisite when the media-analysis/render blocks are implemented.
+FFmpeg/ffprobe are now runtime requirements for song analysis, not just future rendering.
 
 ## Install
 
@@ -74,29 +71,79 @@ The frontend reads `NEXT_PUBLIC_API_BASE_URL` and defaults to `http://localhost:
 
 ## Simple Mode
 
-The current home page is the first real product workflow rather than a foundation status page.
+Simple Mode currently provides:
 
-Simple Mode provides:
+- persistent project sidebar/list
+- new project, reopen, edit, save, delete
+- song upload
+- authoritative supplied lyrics
+- storyline / meaning / visual direction
+- mood / genre
+- Character / Style / Location placeholders
+- 16:9 / 9:16 / 1:1 output
+- target platform
+- Fast / Balanced / Best Quality / Cheapest / Custom presets
+- estimated and maximum budget
+- offline/error/loading/empty states
+- responsive and keyboard-focus behavior
 
-- persistent project list/sidebar
-- new-project workflow
-- create/reopen/edit/delete
-- song selection/upload
-- lyrics and story/meaning/direction inputs
-- mood and genre
-- Character/Style/Location placeholders for Block 7
-- aspect ratio and target platform
-- Fast, Balanced, Best Quality, Cheapest, and Custom presets
-- estimated/maximum budget
-- online/offline state and API error recovery
+Provider IDs, model IDs, seeds, raw provider JSON, and provider-specific controls stay out of Simple Mode.
 
-Provider IDs, model IDs, seeds, raw provider JSON, and provider-specific controls are intentionally absent from Simple Mode.
+## Song analysis
 
-Advanced and Expert/Custom tabs are visible as progressive-disclosure destinations but remain disabled until the corresponding implementation blocks are reached.
+After a saved project has a song attached, **Analyze song** runs completely locally:
 
-## Persistence and local data
+1. `ffprobe` reads duration, codec, sample rate, channels, and bitrate.
+2. FFmpeg streams the first audio stream as mono 8 kHz signed 16-bit PCM.
+3. The backend builds bounded waveform buckets and normalized 50 ms energy points without loading the decoded song into memory.
+4. Local onset candidates produce beat markers and a BPM estimate.
+5. Persisted beats derive four-beat bars and four-bar phrases.
+6. Low-energy windows derive quiet ranges.
+7. Energy/duration changes propose editable song sections.
+8. The complete analysis is persisted as a new DuckDB version.
 
-Default storage:
+The UI then shows:
+
+- duration / BPM / sample rate
+- waveform
+- beat and bar markers
+- phrase bands
+- quiet shading
+- supplied lyrics lane
+- editable Structure Map
+
+Saving Structure Map changes creates another analysis version. Earlier versions remain available through the API.
+
+The original supplied lyrics are not rewritten by signal analysis.
+
+### Analysis API
+
+```text
+GET  /api/projects/{projectId}/analysis/
+POST /api/projects/{projectId}/analysis/
+GET  /api/projects/{projectId}/analysis/versions
+PUT  /api/projects/{projectId}/analysis/sections
+```
+
+## Project API
+
+```text
+GET    /api/projects/
+POST   /api/projects/
+GET    /api/projects/{id}
+PUT    /api/projects/{id}
+DELETE /api/projects/{id}
+GET    /api/projects/{id}/song
+POST   /api/projects/{id}/song
+GET    /api/projects/{id}/export
+POST   /api/projects/import
+```
+
+A song upload validates file size/type/name, stores the binary under the project `source/` area, stores metadata in DuckDB, and points the project `Song` reference at the new asset. Replacing the song does **not** silently delete the previous media asset.
+
+## Persistence
+
+Default layout:
 
 ```text
 data/
@@ -115,36 +162,9 @@ projects/
     renders/
 ```
 
-Configure with `Storage__DatabasePath` and `Storage__ProjectsRoot` or the equivalent `Storage` section.
+Current DuckDB schema version is 3 and includes `song_analyses` in addition to project/media/provider/job metadata.
 
-DuckDB stores structured metadata only. Large audio/image/video data remains on filesystem/object storage. Media metadata includes location, SHA-256, MIME type, dimensions, duration, size, source, and timestamps.
-
-## Project API
-
-```text
-GET    /api/projects/
-POST   /api/projects/
-GET    /api/projects/{id}
-PUT    /api/projects/{id}
-DELETE /api/projects/{id}
-GET    /api/projects/{id}/song
-POST   /api/projects/{id}/song
-GET    /api/projects/{id}/export
-POST   /api/projects/import
-```
-
-Portable project JSON is versioned interchange/backup data; DuckDB remains runtime-authoritative. Project/reference edits do not silently delete generated assets.
-
-### Song attachment
-
-A successful upload:
-
-1. validates size, extension, MIME type, and filename safety,
-2. stores the binary in the project `source/` area,
-3. persists SHA-256 and other media metadata in DuckDB,
-4. replaces the project’s `Song` reference with the new media asset ID.
-
-The previous media asset is intentionally retained. Later cleanup/asset-management logic can remove unreferenced assets explicitly instead of losing user work implicitly.
+Large media files are never stored as DuckDB blobs.
 
 ## Provider API and credentials
 
@@ -154,20 +174,11 @@ GET /api/providers/{providerId}/settings
 PUT /api/providers/{providerId}/settings
 ```
 
-Provider settings persist credential references, never secret values. Example:
-
-```json
-{
-  "kind": "Environment",
-  "identifier": "OPENAI_API_KEY"
-}
-```
-
-The current built-in resolver supports environment references. `OperatingSystem` and `External` reference kinds are stable extension seams for later secret-store adapters. Current registered providers are offline mocks and require no API keys.
+Provider settings store credential references, never plaintext secret values. Current generation providers are offline mocks suitable for development without paid calls.
 
 ## Persistent job engine
 
-Job states are persisted in DuckDB and survive backend restarts. The current state model includes:
+The persisted state model includes:
 
 ```text
 Draft
@@ -189,59 +200,23 @@ FailedPermanent
 Cancelled
 ```
 
-A completed/rejected/permanent/cancelled job is terminal. Normal resume does not regenerate completed work; a deliberate `restart` action is required to create a new attempt.
-
-Jobs may depend on other jobs. Dependents stay `WaitingForDependency` until prerequisites complete; a failed terminal dependency moves the dependent to a permanent dependency failure.
-
-Provider failures are normalized into quota/provider waits, bounded scheduled retries, rejection, retryable failure, or permanent failure. A job with a persisted provider task ID is reconciled after restart rather than blindly resubmitted, reducing duplicate paid requests.
-
-The worker is enabled by default:
-
-```json
-{
-  "Jobs": {
-    "WorkerEnabled": true
-  }
-}
-```
-
-Tests disable/remove the hosted worker and drive `JobProcessor` deterministically.
-
-### Job API
-
-```text
-GET  /api/jobs/
-POST /api/jobs/
-GET  /api/jobs/{id}
-GET  /api/jobs/{id}/attempts
-GET  /api/jobs/{id}/dependencies
-POST /api/jobs/{id}/pause
-POST /api/jobs/{id}/resume
-POST /api/jobs/{id}/retry
-POST /api/jobs/{id}/restart
-POST /api/jobs/{id}/cancel
-POST /api/jobs/projects/{projectId}/pause|resume|cancel
-POST /api/jobs/projects/{projectId}/scenes/{sceneId}/pause|resume|cancel
-GET  /api/jobs/events
-```
-
-`/api/jobs/events` is an SSE notification stream. Notifications contain freshly reloaded persisted job state; the stream itself is not durable state.
+Normal resume does not regenerate completed work. Jobs with known provider task IDs are reconciled after restart instead of blindly creating duplicate remote requests.
 
 ## Typed API contracts
 
-ASP.NET Core OpenAPI is the source contract. The frontend snapshot is committed at:
+ASP.NET Core OpenAPI is the source contract. The committed frontend snapshot is:
 
 ```text
 frontend/src/api/schema.d.ts
 ```
 
-With the backend running, regenerate it using:
+With the backend running:
 
 ```bash
 npm run api:generate --workspace frontend
 ```
 
-Frontend API code derives request/response types from this schema instead of maintaining parallel DTO definitions.
+Frontend API code derives request/response types from this schema.
 
 ## Validate
 
@@ -269,13 +244,16 @@ dotnet build backend/OpenMusicVideoCreator.sln -c Release
 dotnet test backend/OpenMusicVideoCreator.sln -c Release
 ```
 
+In the current assistant execution environment the repository cannot be checked out because external repository DNS/network access is unavailable, so the complete local build/test suite has not been executed here. FFmpeg/ffprobe 7.1.5 command shapes were validated locally against a generated audio fixture. No GitHub Actions were used for this validation.
+
 ## Repository structure
 
 ```text
 frontend/
-  app/                            Next.js routes + design tokens/styles
-  src/api/                        typed HTTP client + schema snapshot
-  src/features/projects/          Simple Mode project feature
+  app/
+  src/api/
+  src/features/projects/
+  src/features/analysis/
 backend/
   src/
     OpenMusicVideoCreator.Domain/
@@ -285,7 +263,6 @@ backend/
   tests/
     OpenMusicVideoCreator.ArchitectureTests/
     OpenMusicVideoCreator.Api.Tests/
-scripts/                          repo validation + agent-skill helpers
 ```
 
 ## Development rules
@@ -298,4 +275,4 @@ Read before implementation work:
 4. `ARCHITECTURE.md`
 5. `SKILLS.md`
 
-Core rules include modular reusable code, provider-independent business logic, persisted asynchronous generation, non-destructive asset versioning, bounded retries/cost, and restart-safe continuation.
+Keep modules focused, preserve provider independence, persist asynchronous state, keep generated work non-destructive, and never claim a validation step passed unless it actually executed.
