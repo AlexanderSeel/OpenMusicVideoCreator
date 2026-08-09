@@ -1,5 +1,6 @@
 using OpenMusicVideoCreator.Api.Contracts.Analysis;
 using OpenMusicVideoCreator.Application.Analysis;
+using OpenMusicVideoCreator.Application.Providers;
 using OpenMusicVideoCreator.Domain.Analysis;
 
 namespace OpenMusicVideoCreator.Api.Endpoints;
@@ -101,6 +102,62 @@ public static class SongAnalysisEndpoints
         })
             .WithName("UpdateSongAnalysisSections")
             .Produces<SongAnalysisResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesValidationProblem();
+
+        group.MapGet("/lyrics/timing", async Task<IResult> (
+            Guid projectId,
+            LyricTimingService service,
+            CancellationToken cancellationToken) =>
+        {
+            var timing = await service.GetLatestAsync(projectId, cancellationToken);
+            return timing is null
+                ? Results.NotFound()
+                : Results.Ok(LyricTimingResponse.FromDomain(timing));
+        })
+            .WithName("GetLatestLyricTiming")
+            .Produces<LyricTimingResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
+        group.MapGet("/lyrics/timing/versions", async (
+            Guid projectId,
+            LyricTimingService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok((await service.ListVersionsAsync(projectId, cancellationToken))
+                .Select(LyricTimingResponse.FromDomain)
+                .ToArray()))
+            .WithName("ListLyricTimingVersions")
+            .Produces<LyricTimingResponse[]>(StatusCodes.Status200OK);
+
+        group.MapPost("/lyrics/timing", async Task<IResult> (
+            Guid projectId,
+            IReadOnlyList<TranscriptionSegmentRequest> segments,
+            LyricTimingService service,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var normalized = segments.Select(segment => new TranscriptionSegment(
+                    TimeSpan.FromSeconds(segment.StartSeconds),
+                    TimeSpan.FromSeconds(segment.EndSeconds),
+                    segment.Text)).ToArray();
+                var timing = await service.ApplyTranscriptionAsync(projectId, normalized, cancellationToken);
+                return Results.Ok(LyricTimingResponse.FromDomain(timing));
+            }
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["lyrics"] = [exception.Message],
+                });
+            }
+        })
+            .WithName("ApplyTranscriptionLyricTiming")
+            .Produces<LyricTimingResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
             .ProducesValidationProblem();
 
