@@ -5,7 +5,7 @@ namespace OpenMusicVideoCreator.Infrastructure.Persistence;
 
 public sealed class DuckDbDatabase : IApplicationPersistence
 {
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
     private readonly DuckDbConnectionFactory _connections;
 
     public DuckDbDatabase(DuckDbConnectionFactory connections)
@@ -45,6 +45,12 @@ public sealed class DuckDbDatabase : IApplicationPersistence
         if (currentVersion < 2)
         {
             await ApplyVersionTwoAsync(connection, cancellationToken);
+            currentVersion = 2;
+        }
+
+        if (currentVersion < 3)
+        {
+            await ApplyVersionThreeAsync(connection, cancellationToken);
         }
     }
 
@@ -221,6 +227,44 @@ public sealed class DuckDbDatabase : IApplicationPersistence
 
             INSERT INTO schema_migrations(version, applied_utc)
             VALUES (2, current_timestamp);
+            """;
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static async Task ApplyVersionThreeAsync(
+        DuckDBConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            CREATE TABLE song_analyses (
+                id UUID PRIMARY KEY,
+                project_id UUID NOT NULL,
+                source_asset_id UUID NOT NULL,
+                version INTEGER NOT NULL,
+                duration_seconds DOUBLE NOT NULL,
+                bpm DOUBLE,
+                sample_rate INTEGER,
+                channels INTEGER,
+                codec VARCHAR,
+                bit_rate BIGINT,
+                waveform_json VARCHAR NOT NULL,
+                energy_json VARCHAR NOT NULL,
+                beats_json VARCHAR NOT NULL,
+                sections_json VARCHAR NOT NULL,
+                created_utc TIMESTAMPTZ NOT NULL,
+                UNIQUE(project_id, version)
+            );
+
+            CREATE INDEX idx_song_analyses_project_version
+            ON song_analyses(project_id, version DESC);
+
+            INSERT INTO schema_migrations(version, applied_utc)
+            VALUES (3, current_timestamp);
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
