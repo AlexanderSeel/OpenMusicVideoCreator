@@ -79,15 +79,11 @@ This file is the visible **implementation tracker**. Completed repository-side i
 
 ## Block 5 — Simple Mode project creation and application shell
 
-Create the first user-facing workflow on top of durable project data.
-
-### Scope
-
 - [x] Desktop-first application shell with progressive disclosure: Simple, Advanced, Expert/Custom.
 - [x] Project list/dashboard and project creation/edit workflow.
 - [x] Song upload, lyrics, storyline/meaning/direction, output target, preset, and budget inputs.
 - [x] Durable project `Song` media reference with non-destructive replacement semantics.
-- [x] Placeholder/selectors for Character, Style, and Location libraries that become functional in Block 7.
+- [x] Character, Style, and Location selectors integrated with the reusable Block 7 Library.
 - [x] Fast, Balanced, Best Quality, Cheapest, and Custom preset domain enum without provider coupling.
 - [x] Accessible loading, error, empty, and offline/reconnect states.
 - [x] Reusable design tokens/components instead of page-specific styling duplication.
@@ -102,7 +98,7 @@ Create the first user-facing workflow on top of durable project data.
 - [x] Simple Mode does not expose provider IDs, seeds, or model-specific JSON.
 - [x] Core UI includes keyboard focus, semantic labels/tab roles, live/error states, reduced-motion handling, and responsive fallback.
 
-Execution proof for this block is tracked in `TESTPLAN.md`.
+Execution proof is tracked in `TESTPLAN.md`.
 
 ---
 
@@ -110,7 +106,7 @@ Execution proof for this block is tracked in `TESTPLAN.md`.
 
 - [x] Use ffprobe/FFmpeg for authoritative media metadata and deterministic local media analysis where applicable.
 - [x] Implement song analysis pipeline for duration, BPM/beat candidates, bars, phrases, energy/dynamics, quiet sections, heuristic vocal/instrumental estimates, and section suggestions.
-- [x] Evaluate/reuse relevant music-to-video concepts (music-first timing, waveform, beat/phrase segmentation, editable storyboard-driving structure) without coupling runtime architecture to HyperFrames.
+- [x] Evaluate/reuse relevant music-to-video concepts without coupling runtime architecture to HyperFrames.
 - [x] Persist immutable song analysis versions in DuckDB.
 - [x] Generate bounded waveform data suitable for efficient frontend rendering without retaining full decoded audio in application memory.
 - [x] Implement editable Structure Map with song sections and boundaries.
@@ -127,26 +123,32 @@ Execution proof for this block is tracked in `TESTPLAN.md`.
 - [x] Supplied lyrics remain unchanged by transcription assistance; only timing/confidence metadata is attached.
 - [x] Low-information signal/transcription paths may return uncertain/null/unmatched estimates rather than fabricating certainty.
 
-Execution proof for FFmpeg, persistence restart, browser rendering, and the complete local test suite is tracked in `TESTPLAN.md`.
+Execution proof is tracked in `TESTPLAN.md`.
 
 ---
 
 ## Block 7 — Reusable Character, Style, Location, and Asset libraries
 
-- [ ] Character Library with reference types, appearance details, forbidden changes, outfits, and continuity locks.
-- [ ] Style Library with prompts, references, camera/lighting/animation characteristics.
-- [ ] Location Library with references, constraints, environment, lighting, weather, and time of day.
-- [ ] Unified Asset Library with tags, search, favorites, previews, reuse, and source tracking.
-- [ ] Project-to-library references without unnecessary metadata duplication.
-- [ ] Character project-state model capable of later timeline curves.
-- [ ] Media reference validation and thumbnail/proxy generation.
+- [x] Character Library with reference types, appearance details, forbidden changes, outfits, reference assets, and default continuity locks.
+- [x] Style Library with prompts, references, camera/lighting/animation characteristics.
+- [x] Location Library with references, constraints, environment, lighting, weather, and time of day.
+- [x] Unified Asset Library with tags, search, favorites, previews, reuse, and source tracking.
+- [x] Project-to-library references use stable IDs without unnecessary metadata duplication.
+- [x] Project-specific Character outfit/continuity/state model supports normalized values that can become later timeline curves.
+- [x] Media reference validation and FFmpeg thumbnail/preview generation use safe global library storage.
+- [x] DuckDB schema v5 persists library assets/items and project character state.
+- [x] Library CRUD/search/favorites/preview/delete-conflict APIs and typed frontend contracts.
+- [x] Simple Mode reusable selectors, Library workspace, and project Character continuity UI.
+- [x] Repository-side tests cover cross-project reuse, safe deletion, persistence, asset conflicts, and global path safety.
 
-### Acceptance
+### Acceptance implementation
 
-- [ ] Library items can be reused across projects.
-- [ ] Deleting a referenced library item is handled explicitly and safely.
-- [ ] Character continuity settings persist per project.
-- [ ] References appear consistently in project creation/editing and scene planning.
+- [x] The same Character/Style/Location item can be referenced by multiple projects without copying its metadata.
+- [x] Deleting a referenced visual-library or asset-library item is handled explicitly and safely with referencing IDs returned to the caller.
+- [x] Character outfit/continuity/state settings are persisted separately per project.
+- [x] Project creation/editing uses the same stable reference contract that Block 8 scene planning consumes, avoiding a second scene-specific library model.
+
+Execution proof is tracked in `TESTPLAN.md`.
 
 ---
 
