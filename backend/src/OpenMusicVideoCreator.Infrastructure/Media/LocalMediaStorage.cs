@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using OpenMusicVideoCreator.Application.Abstractions;
+using OpenMusicVideoCreator.Infrastructure.Persistence;
 
 namespace OpenMusicVideoCreator.Infrastructure.Media;
 
@@ -24,6 +25,11 @@ public sealed class LocalMediaStorage : IMediaStorage
     public LocalMediaStorage(LocalMediaPathResolver paths)
     {
         _paths = paths;
+    }
+
+    public LocalMediaStorage(StorageOptions options)
+        : this(new LocalMediaPathResolver(options))
+    {
     }
 
     public Task EnsureProjectLayoutAsync(Guid projectId, CancellationToken cancellationToken = default)
