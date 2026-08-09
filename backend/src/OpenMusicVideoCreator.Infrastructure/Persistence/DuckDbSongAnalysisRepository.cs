@@ -91,11 +91,11 @@ public sealed class DuckDbSongAnalysisRepository : ISongAnalysisRepository
             INSERT INTO song_analyses(
                 id, project_id, source_asset_id, version, duration_seconds, bpm,
                 sample_rate, channels, codec, bit_rate, waveform_json, energy_json,
-                beats_json, sections_json, created_utc
+                beats_json, sections_json, vocal_activity_json, created_utc
             ) VALUES (
                 $id, $project_id, $source_asset_id, $version, $duration_seconds, $bpm,
                 $sample_rate, $channels, $codec, $bit_rate, $waveform_json, $energy_json,
-                $beats_json, $sections_json, $created_utc
+                $beats_json, $sections_json, $vocal_activity_json, $created_utc
             )
             ON CONFLICT(id) DO UPDATE SET
                 project_id = excluded.project_id,
@@ -111,6 +111,7 @@ public sealed class DuckDbSongAnalysisRepository : ISongAnalysisRepository
                 energy_json = excluded.energy_json,
                 beats_json = excluded.beats_json,
                 sections_json = excluded.sections_json,
+                vocal_activity_json = excluded.vocal_activity_json,
                 created_utc = excluded.created_utc;
             """;
         command.Parameters.Add(new DuckDBParameter("id", analysis.Id));
@@ -127,26 +128,40 @@ public sealed class DuckDbSongAnalysisRepository : ISongAnalysisRepository
         command.Parameters.Add(new DuckDBParameter("energy_json", JsonSerializer.Serialize(analysis.Energy, JsonOptions)));
         command.Parameters.Add(new DuckDBParameter("beats_json", JsonSerializer.Serialize(analysis.Beats, JsonOptions)));
         command.Parameters.Add(new DuckDBParameter("sections_json", JsonSerializer.Serialize(analysis.Sections, JsonOptions)));
+        command.Parameters.Add(new DuckDBParameter(
+            "vocal_activity_json",
+            analysis.VocalActivity is null
+                ? DBNull.Value
+                : JsonSerializer.Serialize(analysis.VocalActivity, JsonOptions)));
         command.Parameters.Add(new DuckDBParameter("created_utc", analysis.CreatedUtc.UtcDateTime));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static SongAnalysis Read(DbDataReader reader) => new(
-        reader.GetFieldValue<Guid>(0),
-        reader.GetFieldValue<Guid>(1),
-        reader.GetFieldValue<Guid>(2),
-        reader.GetInt32(3),
-        reader.GetDouble(4),
-        reader.IsDBNull(5) ? null : reader.GetDouble(5),
-        reader.IsDBNull(6) ? null : reader.GetInt32(6),
-        reader.IsDBNull(7) ? null : reader.GetInt32(7),
-        reader.IsDBNull(8) ? null : reader.GetString(8),
-        reader.IsDBNull(9) ? null : reader.GetInt64(9),
-        Deserialize<WaveformBucket>(reader.GetString(10)),
-        Deserialize<EnergyPoint>(reader.GetString(11)),
-        Deserialize<BeatMarker>(reader.GetString(12)),
-        Deserialize<SongSection>(reader.GetString(13)),
-        new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(14), DateTimeKind.Utc)));
+    private static SongAnalysis Read(DbDataReader reader)
+    {
+        var analysis = new SongAnalysis(
+            reader.GetFieldValue<Guid>(0),
+            reader.GetFieldValue<Guid>(1),
+            reader.GetFieldValue<Guid>(2),
+            reader.GetInt32(3),
+            reader.GetDouble(4),
+            reader.IsDBNull(5) ? null : reader.GetDouble(5),
+            reader.IsDBNull(6) ? null : reader.GetInt32(6),
+            reader.IsDBNull(7) ? null : reader.GetInt32(7),
+            reader.IsDBNull(8) ? null : reader.GetString(8),
+            reader.IsDBNull(9) ? null : reader.GetInt64(9),
+            Deserialize<WaveformBucket>(reader.GetString(10)),
+            Deserialize<EnergyPoint>(reader.GetString(11)),
+            Deserialize<BeatMarker>(reader.GetString(12)),
+            Deserialize<SongSection>(reader.GetString(13)),
+            new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(15), DateTimeKind.Utc)))
+        {
+            VocalActivity = reader.IsDBNull(14)
+                ? null
+                : JsonSerializer.Deserialize<VocalActivityEstimate>(reader.GetString(14), JsonOptions),
+        };
+        return analysis;
+    }
 
     private static IReadOnlyList<T> Deserialize<T>(string json) =>
         JsonSerializer.Deserialize<T[]>(json, JsonOptions) ?? [];
@@ -159,6 +174,6 @@ public sealed class DuckDbSongAnalysisRepository : ISongAnalysisRepository
     private const string SelectColumns = """
         id, project_id, source_asset_id, version, duration_seconds, bpm,
         sample_rate, channels, codec, bit_rate, waveform_json, energy_json,
-        beats_json, sections_json, created_utc
+        beats_json, sections_json, vocal_activity_json, created_utc
         """;
 }
