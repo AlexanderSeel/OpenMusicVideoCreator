@@ -49,32 +49,8 @@ public sealed class DuckDbProjectRepository : IProjectRepository
         await using var connection = _connections.Create();
         await connection.OpenAsync(cancellationToken);
 
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT
-                title,
-                artist,
-                lyrics,
-                storyline,
-                meaning,
-                visual_direction,
-                mood,
-                genre,
-                aspect_ratio,
-                resolution_width,
-                resolution_height,
-                generation_preset,
-                estimated_budget,
-                maximum_budget,
-                created_utc,
-                updated_utc
-            FROM projects
-            WHERE id = $id;
-            """;
-        command.Parameters.Add(new DuckDBParameter("id", id));
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
+        var row = await ReadProjectRowAsync(connection, id, cancellationToken);
+        if (row is null)
         {
             return null;
         }
@@ -84,22 +60,23 @@ public sealed class DuckDbProjectRepository : IProjectRepository
 
         return new MusicVideoProject(
             id,
-            reader.GetString(0),
-            reader.GetString(1),
-            reader.GetString(2),
-            reader.GetString(3),
-            reader.GetString(4),
-            reader.GetString(5),
-            reader.GetString(6),
-            reader.GetString(7),
-            ParseEnum<ProjectAspectRatio>(reader.GetString(8)),
-            new OutputResolution(reader.GetInt32(9), reader.GetInt32(10)),
+            row.Title,
+            row.Artist,
+            row.Lyrics,
+            row.Storyline,
+            row.Meaning,
+            row.VisualDirection,
+            row.Mood,
+            row.Genre,
+            row.AspectRatio,
+            row.Resolution,
             targets,
-            ParseEnum<GenerationPreset>(reader.GetString(11)),
-            reader.IsDBNull(12) ? null : reader.GetDecimal(12),
-            reader.IsDBNull(13) ? null : reader.GetDecimal(13),
-            ToUtcOffset(reader.GetDateTime(14)),
-            ToUtcOffset(reader.GetDateTime(15)));
+            row.Preset,
+            row.EstimatedBudget,
+            row.MaximumBudget,
+            references,
+            row.CreatedUtc,
+            row.UpdatedUtc);
     }
 
     public async Task UpsertAsync(
@@ -159,7 +136,7 @@ public sealed class DuckDbProjectRepository : IProjectRepository
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        await DeleteChildrenAsync(connection, transaction, project.Id, cancellationToken);
+        await DeleteProjectCollectionsAsync(connection, transaction, project.Id, cancellationToken);
         await InsertTargetsAsync(connection, transaction, project, cancellationToken);
         await InsertReferencesAsync(connection, transaction, project, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -171,7 +148,8 @@ public sealed class DuckDbProjectRepository : IProjectRepository
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        await DeleteChildrenAsync(connection, transaction, id, cancellationToken);
+        await DeleteProjectCollectionsAsync(connection, transaction, id, cancellationToken);
+        await DeleteProjectSettingsAsync(connection, transaction, id, cancellationToken);
 
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -181,6 +159,59 @@ public sealed class DuckDbProjectRepository : IProjectRepository
 
         await transaction.CommitAsync(cancellationToken);
         return affected > 0;
+    }
+
+    private static async Task<ProjectRow?> ReadProjectRowAsync(
+        DuckDBConnection connection,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+                title,
+                artist,
+                lyrics,
+                storyline,
+                meaning,
+                visual_direction,
+                mood,
+                genre,
+                aspect_ratio,
+                resolution_width,
+                resolution_height,
+                generation_preset,
+                estimated_budget,
+                maximum_budget,
+                created_utc,
+                updated_utc
+            FROM projects
+            WHERE id = $id;
+            """;
+        command.Parameters.Add(new DuckDBParameter("id", id));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new ProjectRow(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetString(5),
+            reader.GetString(6),
+            reader.GetString(7),
+            ParseEnum<ProjectAspectRatio>(reader.GetString(8)),
+            new OutputResolution(reader.GetInt32(9), reader.GetInt32(10)),
+            ParseEnum<GenerationPreset>(reader.GetString(11)),
+            reader.IsDBNull(12) ? null : reader.GetDecimal(12),
+            reader.IsDBNull(13) ? null : reader.GetDecimal(13),
+            ToUtcOffset(reader.GetDateTime(14)),
+            ToUtcOffset(reader.GetDateTime(15)));
     }
 
     private static void AddProjectParameters(DuckDBCommand command, MusicVideoProject project)
@@ -198,14 +229,14 @@ public sealed class DuckDbProjectRepository : IProjectRepository
         command.Parameters.Add(new DuckDBParameter("resolution_width", project.Resolution.Width));
         command.Parameters.Add(new DuckDBParameter("resolution_height", project.Resolution.Height));
         command.Parameters.Add(new DuckDBParameter("generation_preset", project.Preset.ToString()));
-        command.Parameters.Add(new DuckDBParameter("estimated_budget", project.EstimatedBudget ?? (object)DBNull.Value));
-        command.Parameters.Add(new DuckDBParameter("maximum_budget", project.MaximumBudget ?? (object)DBNull.Value));
+        command.Parameters.Add(new DuckDBParameter("estimated_budget", (object?)project.EstimatedBudget ?? DBNull.Value));
+        command.Parameters.Add(new DuckDBParameter("maximum_budget", (object?)project.MaximumBudget ?? DBNull.Value));
         command.Parameters.Add(new DuckDBParameter("created_utc", project.CreatedUtc.UtcDateTime));
         command.Parameters.Add(new DuckDBParameter("updated_utc", project.UpdatedUtc.UtcDateTime));
     }
 
-    private static async Task DeleteChildrenAsync(
-        DuckDB.NET.Data.DuckDBConnection connection,
+    private static async Task DeleteProjectCollectionsAsync(
+        DuckDBConnection connection,
         System.Data.Common.DbTransaction transaction,
         Guid projectId,
         CancellationToken cancellationToken)
@@ -215,14 +246,26 @@ public sealed class DuckDbProjectRepository : IProjectRepository
         command.CommandText = """
             DELETE FROM project_targets WHERE project_id = $project_id;
             DELETE FROM project_references WHERE project_id = $project_id;
-            DELETE FROM project_settings WHERE project_id = $project_id;
             """;
         command.Parameters.Add(new DuckDBParameter("project_id", projectId));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task DeleteProjectSettingsAsync(
+        DuckDBConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        Guid projectId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "DELETE FROM project_settings WHERE project_id = $project_id;";
+        command.Parameters.Add(new DuckDBParameter("project_id", projectId));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static async Task InsertTargetsAsync(
-        DuckDB.NET.Data.DuckDBConnection connection,
+        DuckDBConnection connection,
         System.Data.Common.DbTransaction transaction,
         MusicVideoProject project,
         CancellationToken cancellationToken)
@@ -242,7 +285,7 @@ public sealed class DuckDbProjectRepository : IProjectRepository
     }
 
     private static async Task InsertReferencesAsync(
-        DuckDB.NET.Data.DuckDBConnection connection,
+        DuckDBConnection connection,
         System.Data.Common.DbTransaction transaction,
         MusicVideoProject project,
         CancellationToken cancellationToken)
@@ -263,7 +306,7 @@ public sealed class DuckDbProjectRepository : IProjectRepository
     }
 
     private static async Task<IReadOnlyList<string>> ReadTargetsAsync(
-        DuckDB.NET.Data.DuckDBConnection connection,
+        DuckDBConnection connection,
         Guid projectId,
         CancellationToken cancellationToken)
     {
@@ -286,7 +329,7 @@ public sealed class DuckDbProjectRepository : IProjectRepository
     }
 
     private static async Task<IReadOnlyList<ProjectReference>> ReadReferencesAsync(
-        DuckDB.NET.Data.DuckDBConnection connection,
+        DuckDBConnection connection,
         Guid projectId,
         CancellationToken cancellationToken)
     {
@@ -318,4 +361,21 @@ public sealed class DuckDbProjectRepository : IProjectRepository
 
     private static DateTimeOffset ToUtcOffset(DateTime value) =>
         new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+
+    private sealed record ProjectRow(
+        string Title,
+        string Artist,
+        string Lyrics,
+        string Storyline,
+        string Meaning,
+        string VisualDirection,
+        string Mood,
+        string Genre,
+        ProjectAspectRatio AspectRatio,
+        OutputResolution Resolution,
+        GenerationPreset Preset,
+        decimal? EstimatedBudget,
+        decimal? MaximumBudget,
+        DateTimeOffset CreatedUtc,
+        DateTimeOffset UpdatedUtc);
 }
