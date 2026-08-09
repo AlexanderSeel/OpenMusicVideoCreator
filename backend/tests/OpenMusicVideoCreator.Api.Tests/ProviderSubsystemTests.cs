@@ -57,11 +57,11 @@ public sealed class ProviderSubsystemTests : IClassFixture<TestApplicationFactor
                 MaxConcurrency: 3,
                 TimeoutSeconds: 90,
                 MaxRetries: 4,
-                AllowedOperations: new HashSet<ProviderCapability>
-                {
+                AllowedOperations:
+                [
                     ProviderCapability.ImageGeneration,
                     ProviderCapability.ImageEditing,
-                },
+                ],
                 Priority: 10,
                 FallbackPriority: 20);
 
@@ -80,10 +80,13 @@ public sealed class ProviderSubsystemTests : IClassFixture<TestApplicationFactor
             Assert.DoesNotContain(secretValue, persisted, StringComparison.Ordinal);
 
             var credentialResolver = _factory.Services.GetRequiredService<ICredentialResolver>();
-            using var resolved = await credentialResolver.ResolveAsync(request.CredentialReference!);
+            var resolved = await credentialResolver.ResolveAsync(request.CredentialReference!);
             Assert.NotNull(resolved);
-            Assert.Equal(secretValue, new string(resolved.Value.Span));
-            Assert.Equal("***", resolved.ToString());
+            using (resolved)
+            {
+                Assert.Equal(secretValue, new string(resolved.Value.Span));
+                Assert.Equal("***", resolved.ToString());
+            }
         }
         finally
         {
@@ -105,7 +108,7 @@ public sealed class ProviderSubsystemTests : IClassFixture<TestApplicationFactor
             MaxConcurrency: 1,
             TimeoutSeconds: 30,
             MaxRetries: 1,
-            AllowedOperations: new HashSet<ProviderCapability> { ProviderCapability.ImageGeneration },
+            AllowedOperations: [ProviderCapability.ImageGeneration],
             Priority: 100,
             FallbackPriority: 100);
 
@@ -149,9 +152,10 @@ public sealed class ProviderSubsystemTests : IClassFixture<TestApplicationFactor
                 1024,
                 []));
             Assert.False(imageResult.IsSuccess);
-            Assert.Equal(ProviderFailureCode.RateLimited, imageResult.Failure?.Code);
-            Assert.True(imageResult.Failure?.Retryable);
-            Assert.Equal(TimeSpan.FromSeconds(12), imageResult.Failure?.RetryAfter);
+            Assert.NotNull(imageResult.Failure);
+            Assert.Equal(ProviderFailureCode.RateLimited, imageResult.Failure.Code);
+            Assert.True(imageResult.Failure.Retryable);
+            Assert.Equal(TimeSpan.FromSeconds(12), imageResult.Failure.RetryAfter);
 
             control.Set(
                 MockVideoProvider.ProviderId,
@@ -163,8 +167,9 @@ public sealed class ProviderSubsystemTests : IClassFixture<TestApplicationFactor
                 "16:9",
                 "1920x1080"));
             Assert.False(videoResult.IsSuccess);
-            Assert.Equal(ProviderFailureCode.QuotaExhausted, videoResult.Failure?.Code);
-            Assert.False(videoResult.Failure?.Retryable);
+            Assert.NotNull(videoResult.Failure);
+            Assert.Equal(ProviderFailureCode.QuotaExhausted, videoResult.Failure.Code);
+            Assert.False(videoResult.Failure.Retryable);
 
             control.Set(
                 MockImageProvider.ProviderId,
@@ -175,7 +180,8 @@ public sealed class ProviderSubsystemTests : IClassFixture<TestApplicationFactor
                 1024,
                 1024,
                 []));
-            Assert.Equal(ProviderFailureCode.ModerationRejected, imageResult.Failure?.Code);
+            Assert.NotNull(imageResult.Failure);
+            Assert.Equal(ProviderFailureCode.ModerationRejected, imageResult.Failure.Code);
 
             control.Set(
                 MockVideoProvider.ProviderId,
@@ -186,8 +192,9 @@ public sealed class ProviderSubsystemTests : IClassFixture<TestApplicationFactor
                 TimeSpan.FromSeconds(4),
                 "16:9",
                 "1280x720"));
-            Assert.Equal(ProviderFailureCode.TransientFailure, videoResult.Failure?.Code);
-            Assert.True(videoResult.Failure?.Retryable);
+            Assert.NotNull(videoResult.Failure);
+            Assert.Equal(ProviderFailureCode.TransientFailure, videoResult.Failure.Code);
+            Assert.True(videoResult.Failure.Retryable);
 
             control.Set(
                 MockVideoProvider.ProviderId,
@@ -198,8 +205,9 @@ public sealed class ProviderSubsystemTests : IClassFixture<TestApplicationFactor
                 TimeSpan.FromSeconds(4),
                 "16:9",
                 "1280x720"));
-            Assert.Equal(ProviderFailureCode.PermanentFailure, videoResult.Failure?.Code);
-            Assert.False(videoResult.Failure?.Retryable);
+            Assert.NotNull(videoResult.Failure);
+            Assert.Equal(ProviderFailureCode.PermanentFailure, videoResult.Failure.Code);
+            Assert.False(videoResult.Failure.Retryable);
         }
         finally
         {
