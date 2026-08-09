@@ -102,16 +102,24 @@ public sealed class JobService : IJobQueue
             return false;
         }
 
-        await TransitionAsync(
+        var resumeState = !string.IsNullOrWhiteSpace(job.ProviderTaskId)
+            ? JobState.WaitingForProvider
+            : job.State;
+        var updated = await TransitionAsync(
             job,
             JobState.Paused,
-            updated => updated with
+            current => current with
             {
-                ResumeState = job.State,
+                ResumeState = resumeState,
                 ClaimedBy = null,
                 ClaimExpiresUtc = null,
             },
             cancellationToken: cancellationToken);
+
+        await RecordCurrentAttemptAsync(
+            updated,
+            complete: string.IsNullOrWhiteSpace(updated.ProviderTaskId),
+            cancellationToken);
         return true;
     }
 
@@ -133,7 +141,7 @@ public sealed class JobService : IJobQueue
         await TransitionAsync(
             job,
             target,
-            updated => updated with
+            current => current with
             {
                 ResumeState = null,
                 NextRunUtc = null,
@@ -152,16 +160,17 @@ public sealed class JobService : IJobQueue
             return false;
         }
 
-        await TransitionAsync(
+        var updated = await TransitionAsync(
             job,
             JobState.Cancelled,
-            updated => updated with
+            current => current with
             {
                 CompletedUtc = GetUtcNow(),
                 ClaimedBy = null,
                 ClaimExpiresUtc = null,
             },
             cancellationToken: cancellationToken);
+        await RecordCurrentAttemptAsync(updated, complete: true, cancellationToken);
         return true;
     }
 
@@ -177,10 +186,15 @@ public sealed class JobService : IJobQueue
             return false;
         }
 
+        if (job.State == JobState.WaitingForProvider && !string.IsNullOrWhiteSpace(job.ProviderTaskId))
+        {
+            return false;
+        }
+
         await TransitionAsync(
             job,
             JobState.Queued,
-            updated => updated with
+            current => current with
             {
                 RetryCount = 0,
                 NextRunUtc = null,
@@ -197,13 +211,21 @@ public sealed class JobService : IJobQueue
     public async Task<bool> RestartAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var job = await RequireAsync(id, cancellationToken);
+        if (job.AttemptCount > 0 && !job.State.IsTerminal())
+        {
+            await RecordCurrentAttemptAsync(
+                job with { State = JobState.Cancelled },
+                complete: true,
+                cancellationToken);
+        }
+
         var dependenciesSatisfied = await DependenciesCompletedAsync(id, cancellationToken);
         var target = dependenciesSatisfied ? JobState.Queued : JobState.WaitingForDependency;
 
         await TransitionAsync(
             job,
             target,
-            updated => updated with
+            current => current with
             {
                 ResumeState = null,
                 RetryCount = 0,
@@ -252,7 +274,7 @@ public sealed class JobService : IJobQueue
                 await TransitionAsync(
                     job,
                     JobState.Queued,
-                    updated => updated with { NextRunUtc = null },
+                    current => current with { NextRunUtc = null },
                     ignoreConcurrencyConflict: true,
                     cancellationToken: cancellationToken);
                 continue;
@@ -269,7 +291,7 @@ public sealed class JobService : IJobQueue
                 await TransitionAsync(
                     job,
                     JobState.FailedPermanent,
-                    updated => updated with
+                    current => current with
                     {
                         ErrorCode = "dependency_failed",
                         ErrorMessage = "A dependency finished without completing successfully.",
@@ -283,7 +305,7 @@ public sealed class JobService : IJobQueue
                 await TransitionAsync(
                     job,
                     JobState.Queued,
-                    updated => updated with { ErrorCode = null, ErrorMessage = null },
+                    current => current with { ErrorCode = null, ErrorMessage = null },
                     ignoreConcurrencyConflict: true,
                     cancellationToken: cancellationToken);
             }
@@ -299,10 +321,10 @@ public sealed class JobService : IJobQueue
         {
             if (!string.IsNullOrWhiteSpace(job.ProviderTaskId))
             {
-                await TransitionAsync(
+                var updated = await TransitionAsync(
                     job,
                     JobState.WaitingForProvider,
-                    updated => updated with
+                    current => current with
                     {
                         ClaimedBy = null,
                         ClaimExpiresUtc = null,
@@ -311,15 +333,16 @@ public sealed class JobService : IJobQueue
                     },
                     ignoreConcurrencyConflict: true,
                     cancellationToken: cancellationToken);
+                await RecordCurrentAttemptAsync(updated, complete: false, cancellationToken);
                 continue;
             }
 
             if (job.RetryCount < job.MaxRetries)
             {
-                await TransitionAsync(
+                var updated = await TransitionAsync(
                     job,
                     JobState.RetryScheduled,
-                    updated => updated with
+                    current => current with
                     {
                         RetryCount = job.RetryCount + 1,
                         NextRunUtc = now,
@@ -330,13 +353,14 @@ public sealed class JobService : IJobQueue
                     },
                     ignoreConcurrencyConflict: true,
                     cancellationToken: cancellationToken);
+                await RecordCurrentAttemptAsync(updated, complete: true, cancellationToken);
             }
             else
             {
-                await TransitionAsync(
+                var updated = await TransitionAsync(
                     job,
                     JobState.FailedRetryable,
-                    updated => updated with
+                    current => current with
                     {
                         ClaimedBy = null,
                         ClaimExpiresUtc = null,
@@ -345,6 +369,7 @@ public sealed class JobService : IJobQueue
                     },
                     ignoreConcurrencyConflict: true,
                     cancellationToken: cancellationToken);
+                await RecordCurrentAttemptAsync(updated, complete: true, cancellationToken);
             }
         }
     }
@@ -378,7 +403,7 @@ public sealed class JobService : IJobQueue
             },
             cancellationToken: cancellationToken);
 
-        await CompleteCurrentAttemptAsync(updated, cancellationToken);
+        await RecordCurrentAttemptAsync(updated, complete: result.State.IsTerminal(), cancellationToken);
         return updated;
     }
 
@@ -448,7 +473,7 @@ public sealed class JobService : IJobQueue
             },
             cancellationToken: cancellationToken);
 
-        await CompleteCurrentAttemptAsync(updated, cancellationToken);
+        await RecordCurrentAttemptAsync(updated, complete: true, cancellationToken);
         return updated;
     }
 
@@ -540,8 +565,9 @@ public sealed class JobService : IJobQueue
         return updated;
     }
 
-    private async Task CompleteCurrentAttemptAsync(
+    private async Task RecordCurrentAttemptAsync(
         GenerationJob job,
+        bool complete,
         CancellationToken cancellationToken)
     {
         if (job.AttemptCount <= 0)
@@ -559,7 +585,7 @@ public sealed class JobService : IJobQueue
         await _jobs.UpsertAttemptAsync(
             existing with
             {
-                CompletedUtc = GetUtcNow(),
+                CompletedUtc = complete ? GetUtcNow() : null,
                 State = job.State,
                 ProviderTaskId = job.ProviderTaskId,
                 ErrorCode = job.ErrorCode,
