@@ -44,6 +44,12 @@ public sealed record QuietRange(
     double EndSeconds,
     double AverageEnergy);
 
+public sealed record VocalActivityEstimate(
+    double VocalFraction,
+    double InstrumentalFraction,
+    double Confidence,
+    string Method);
+
 public sealed record SongSection(
     Guid Id,
     string Label,
@@ -70,6 +76,8 @@ public sealed record SongAnalysis(
     IReadOnlyList<SongSection> Sections,
     DateTimeOffset CreatedUtc)
 {
+    public VocalActivityEstimate? VocalActivity { get; init; }
+
     public IReadOnlyList<BarMarker> Bars => SongRhythmInference.InferBars(Beats);
 
     public IReadOnlyList<PhraseMarker> Phrases =>
