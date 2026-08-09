@@ -75,6 +75,11 @@ public sealed class ProviderSettingsService
 
     private static ProviderSettings CreateDefault(ProviderDescriptor provider)
     {
+        if (provider.Models.Count == 0)
+        {
+            throw new InvalidDataException($"Provider '{provider.Id}' has no models.");
+        }
+
         var capabilities = provider.Models
             .SelectMany(model => model.Capabilities)
             .ToHashSet();
@@ -107,6 +112,9 @@ public sealed class ProviderSettingsService
             throw new ArgumentException("Provider settings target does not match provider descriptor.", nameof(settings));
         }
 
+        ArgumentNullException.ThrowIfNull(settings.DefaultModels);
+        ArgumentNullException.ThrowIfNull(settings.AllowedOperations);
+
         if (settings.MaxConcurrency < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(settings), "Provider concurrency must be at least 1.");
@@ -133,6 +141,11 @@ public sealed class ProviderSettingsService
 
         foreach (var (capability, modelId) in settings.DefaultModels)
         {
+            if (string.IsNullOrWhiteSpace(modelId))
+            {
+                throw new ArgumentException($"Default model for '{capability}' is required.", nameof(settings));
+            }
+
             if (!settings.AllowedOperations.Contains(capability))
             {
                 throw new ArgumentException($"Default model is configured for disabled capability '{capability}'.", nameof(settings));
@@ -148,7 +161,7 @@ public sealed class ProviderSettingsService
             }
         }
 
-        if (settings.Credential is { Identifier.Length: 0 })
+        if (settings.Credential is not null && string.IsNullOrWhiteSpace(settings.Credential.Identifier))
         {
             throw new ArgumentException("Credential reference identifier cannot be empty.", nameof(settings));
         }
