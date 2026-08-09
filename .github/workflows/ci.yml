@@ -39,6 +39,10 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    outputs:
+      restore: ${{ steps.restore.outcome }}
+      build: ${{ steps.build.outcome }}
+      test: ${{ steps.test.outcome }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,14 +52,34 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Restore
+      - id: restore
+        name: Restore
+        continue-on-error: true
         run: dotnet restore backend/OpenMusicVideoCreator.sln
 
-      - name: Build
+      - id: build
+        name: Build
+        if: ${{ steps.restore.outcome == 'success' }}
+        continue-on-error: true
         run: dotnet build backend/OpenMusicVideoCreator.sln -c Release --no-restore
 
-      - name: Test
+      - id: test
+        name: Test
+        if: ${{ steps.restore.outcome == 'success' && steps.build.outcome == 'success' }}
+        continue-on-error: true
         run: dotnet test backend/OpenMusicVideoCreator.sln -c Release --no-build
+
+      - name: Enforce backend result
+        if: ${{ always() }}
+        env:
+          RESTORE_RESULT: ${{ steps.restore.outcome }}
+          BUILD_RESULT: ${{ steps.build.outcome }}
+          TEST_RESULT: ${{ steps.test.outcome }}
+        run: |
+          if [ "$RESTORE_RESULT" != "success" ] || [ "$BUILD_RESULT" != "success" ] || [ "$TEST_RESULT" != "success" ]; then
+            echo "Backend validation failed: restore=$RESTORE_RESULT build=$BUILD_RESULT test=$TEST_RESULT"
+            exit 1
+          fi
 
   report-main-status:
     if: ${{ always() && github.event_name == 'push' }}
@@ -71,6 +95,9 @@ jobs:
           SHA: ${{ github.sha }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           BACKEND_RESULT: ${{ needs.backend.result }}
+          RESTORE_RESULT: ${{ needs.backend.outputs.restore }}
+          BUILD_RESULT: ${{ needs.backend.outputs.build }}
+          TEST_RESULT: ${{ needs.backend.outputs.test }}
         run: |
           post_status() {
             local context="$1"
@@ -85,12 +112,20 @@ jobs:
               -d "{\"state\":\"$state\",\"context\":\"$context\",\"description\":\"$description\"}"
           }
 
-          frontend_state=failure
-          backend_state=failure
-          if [ "$FRONTEND_RESULT" = "success" ]; then frontend_state=success; fi
-          if [ "$BACKEND_RESULT" = "success" ]; then backend_state=success; fi
+          to_state() {
+            if [ "$1" = "success" ]; then echo success; else echo failure; fi
+          }
+
+          frontend_state=$(to_state "$FRONTEND_RESULT")
+          backend_state=$(to_state "$BACKEND_RESULT")
+          restore_state=$(to_state "$RESTORE_RESULT")
+          build_state=$(to_state "$BUILD_RESULT")
+          test_state=$(to_state "$TEST_RESULT")
 
           post_status "ci/frontend" "$frontend_state" "frontend=$FRONTEND_RESULT"
+          post_status "ci/backend/restore" "$restore_state" "restore=$RESTORE_RESULT"
+          post_status "ci/backend/build" "$build_state" "build=$BUILD_RESULT"
+          post_status "ci/backend/test" "$test_state" "test=$TEST_RESULT"
           post_status "ci/backend" "$backend_state" "backend=$BACKEND_RESULT"
 
           combined_state=success
