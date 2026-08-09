@@ -269,4 +269,4 @@ function toSectionRequests(analysis: SongAnalysisResponse): SongSectionRequest[]
 function round(value: number) { return Math.round(value * 10) / 10; }
 function formatDuration(seconds: number): string { const safe = Math.max(0, Math.round(seconds)); return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`; }
 function formatKind(kind: SongSectionKind): string { return kind.replace(/([a-z])([A-Z])/g, "$1 $2"); }
-function formatPercent(value: number): string { return `${Math.round(Math.Clamp ? value * 100 : value * 100)}%`; }
+function formatPercent(value: number): string { return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`; }
