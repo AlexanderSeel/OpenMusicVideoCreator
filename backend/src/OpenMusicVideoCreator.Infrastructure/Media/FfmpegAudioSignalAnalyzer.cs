@@ -53,12 +53,14 @@ public sealed class FfmpegAudioSignalAnalyzer : IAudioSignalAnalyzer
         var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
         var waveform = new List<WaveformBucket>();
         var rawEnergy = new List<EnergyPoint>();
+        var signalWindows = new List<SignalWindow>();
 
         var targetWaveBuckets = Math.Clamp((int)Math.Ceiling(durationSeconds * 4), 240, 1200);
         var expectedSamples = Math.Max(1L, (long)Math.Ceiling(durationSeconds * AnalysisSampleRate));
         var samplesPerWaveBucket = Math.Max(1L, (long)Math.Ceiling(expectedSamples / (double)targetWaveBuckets));
 
         var buffer = new byte[32 * 1024];
+        var samplePair = new byte[2];
         var hasCarry = false;
         byte carry = 0;
         long sampleIndex = 0;
@@ -76,7 +78,9 @@ public sealed class FfmpegAudioSignalAnalyzer : IAudioSignalAnalyzer
             var offset = 0;
             if (hasCarry)
             {
-                ProcessSample(unchecked((short)(carry | (buffer[0] << 8))));
+                samplePair[0] = carry;
+                samplePair[1] = buffer[0];
+                ProcessSample(BinaryPrimitives.ReadInt16LittleEndian(samplePair));
                 offset = 1;
                 hasCarry = false;
             }
@@ -112,7 +116,8 @@ public sealed class FfmpegAudioSignalAnalyzer : IAudioSignalAnalyzer
         var normalizedEnergy = NormalizeEnergy(rawEnergy);
         var beats = DetectBeats(normalizedEnergy);
         var bpm = EstimateBpm(beats);
-        return new AudioSignalAnalysis(waveform, normalizedEnergy, beats, bpm);
+        var vocalActivity = EstimateVocalActivity(signalWindows, normalizedEnergy, durationSeconds);
+        return new AudioSignalAnalysis(waveform, normalizedEnergy, beats, bpm, vocalActivity);
 
         void ProcessSample(short pcm)
         {
@@ -155,9 +160,9 @@ public sealed class FfmpegAudioSignalAnalyzer : IAudioSignalAnalyzer
                 return;
             }
 
-            rawEnergy.Add(new EnergyPoint(
-                (energy.StartSample + energy.Count / 2d) / AnalysisSampleRate,
-                energy.Rms));
+            var time = (energy.StartSample + energy.Count / 2d) / AnalysisSampleRate;
+            rawEnergy.Add(new EnergyPoint(time, energy.Rms));
+            signalWindows.Add(new SignalWindow(time, energy.Rms, energy.ZeroCrossingRate));
             energy = new SignalAccumulator(sampleIndex);
         }
     }
@@ -178,6 +183,51 @@ public sealed class FfmpegAudioSignalAnalyzer : IAudioSignalAnalyzer
         return raw
             .Select(point => point with { Value = Math.Clamp(point.Value / maximum, 0, 1) })
             .ToArray();
+    }
+
+    internal static VocalActivityEstimate? EstimateVocalActivity(
+        IReadOnlyList<SignalWindow> windows,
+        IReadOnlyList<EnergyPoint> normalizedEnergy,
+        double durationSeconds)
+    {
+        if (windows.Count < 20 || normalizedEnergy.Count != windows.Count || durationSeconds <= 0)
+        {
+            return null;
+        }
+
+        var activeWindows = 0;
+        var likelyVocalWindows = 0;
+        for (var index = 0; index < windows.Count; index++)
+        {
+            var energy = normalizedEnergy[index].Value;
+            if (energy < 0.08)
+            {
+                continue;
+            }
+
+            activeWindows++;
+            var zcr = windows[index].ZeroCrossingRate;
+            if (zcr is >= 0.015 and <= 0.22)
+            {
+                likelyVocalWindows++;
+            }
+        }
+
+        if (activeWindows < 10)
+        {
+            return null;
+        }
+
+        var windowDuration = EnergyWindowSamples / (double)AnalysisSampleRate;
+        var vocalFraction = Math.Clamp(likelyVocalWindows * windowDuration / durationSeconds, 0, 1);
+        var instrumentalFraction = Math.Clamp(1 - vocalFraction, 0, 1);
+        var activeRatio = activeWindows / (double)windows.Count;
+        var confidence = Math.Clamp(0.2 + activeRatio * 0.25, 0.2, 0.45);
+        return new VocalActivityEstimate(
+            Math.Round(vocalFraction, 4),
+            Math.Round(instrumentalFraction, 4),
+            Math.Round(confidence, 3),
+            "energy-zcr-v1");
     }
 
     internal static IReadOnlyList<BeatMarker> DetectBeats(IReadOnlyList<EnergyPoint> energy)
@@ -305,9 +355,14 @@ public sealed class FfmpegAudioSignalAnalyzer : IAudioSignalAnalyzer
         }
     }
 
+    internal sealed record SignalWindow(double TimeSeconds, double Rms, double ZeroCrossingRate);
+
     private sealed class SignalAccumulator
     {
         private double _sumSquares;
+        private double _previous;
+        private bool _hasPrevious;
+        private long _zeroCrossings;
 
         public SignalAccumulator(long startSample)
         {
@@ -319,12 +374,19 @@ public sealed class FfmpegAudioSignalAnalyzer : IAudioSignalAnalyzer
         public double Minimum { get; private set; } = 1;
         public double Maximum { get; private set; } = -1;
         public double Rms => Count == 0 ? 0 : Math.Sqrt(_sumSquares / Count);
+        public double ZeroCrossingRate => Count < 2 ? 0 : _zeroCrossings / (double)(Count - 1);
 
         public void Add(double value)
         {
             Minimum = Math.Min(Minimum, value);
             Maximum = Math.Max(Maximum, value);
             _sumSquares += value * value;
+            if (_hasPrevious && ((_previous < 0 && value >= 0) || (_previous > 0 && value <= 0)))
+            {
+                _zeroCrossings++;
+            }
+            _previous = value;
+            _hasPrevious = true;
             Count++;
         }
     }
