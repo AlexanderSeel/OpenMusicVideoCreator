@@ -54,3 +54,4 @@ public interface IMediaPreviewGenerator
 }
 
 public sealed record LibraryDeleteResult(bool Deleted, IReadOnlyList<Guid> ReferencingProjectIds);
+public sealed record AssetDeleteResult(bool Deleted, IReadOnlyList<Guid> ReferencingLibraryItemIds);
