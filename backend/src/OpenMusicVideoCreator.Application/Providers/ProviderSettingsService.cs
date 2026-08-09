@@ -176,11 +176,11 @@ public sealed class ProviderSettingsService
     private sealed record PersistedProviderSettings(
         bool Enabled,
         CredentialReference? Credential,
-        IReadOnlyDictionary<ProviderCapability, string> DefaultModels,
+        Dictionary<ProviderCapability, string> DefaultModels,
         int MaxConcurrency,
         double TimeoutSeconds,
         int MaxRetries,
-        IReadOnlySet<ProviderCapability> AllowedOperations,
+        HashSet<ProviderCapability> AllowedOperations,
         int Priority,
         int FallbackPriority)
     {
@@ -199,11 +199,11 @@ public sealed class ProviderSettingsService
         public static PersistedProviderSettings FromSettings(ProviderSettings settings) => new(
             settings.Enabled,
             settings.Credential,
-            settings.DefaultModels,
+            new Dictionary<ProviderCapability, string>(settings.DefaultModels),
             settings.MaxConcurrency,
             settings.Timeout.TotalSeconds,
             settings.MaxRetries,
-            settings.AllowedOperations,
+            settings.AllowedOperations.ToHashSet(),
             settings.Priority,
             settings.FallbackPriority);
     }
