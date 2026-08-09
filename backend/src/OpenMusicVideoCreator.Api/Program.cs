@@ -59,4 +59,6 @@ app.MapGet("/api/system/version", (IHostEnvironment environment) =>
 
 app.Run();
 
-public partial class Program;
+public partial class Program
+{
+}
