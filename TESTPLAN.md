@@ -93,20 +93,47 @@ No paid-provider credentials are required for the baseline/mock test plan.
 - [ ] Reject overlapping, negative, reversed, or out-of-duration section ranges.
 - [ ] Restart backend and confirm latest analysis/Structure Map is restored.
 - [ ] Verify waveform, beat/bar/phrase/quiet overlays and authoritative supplied-lyrics lane render in the UI.
-- [ ] Optional transcription timing with the mock provider produces timing suggestions while leaving supplied lyric text unchanged.
+- [ ] Optional transcription timing with normalized/mock transcription segments produces timing suggestions while leaving supplied lyric text unchanged.
 - [ ] Reject/ignore transcription text differences unless the user explicitly edits the authoritative lyrics.
-- [ ] Verify analysis/version changes expose dependency-invalidation metadata/rules without deleting unaffected downstream assets.
+- [ ] Verify analysis/version changes expose dependency/provenance IDs without deleting unaffected downstream assets.
 
-## Cross-cutting security/data checks after Blocks 1–6
+## Block 7 — Reusable Character, Style, Location, and Asset libraries
+
+- [ ] Database migration upgrades a v4 database to schema v5 and creates `library_assets`, `visual_library_items`, and `project_character_states` without losing prior data.
+- [ ] Create Character, Style, and Location entries through the API/UI and reopen them after backend restart.
+- [ ] Character round trip preserves reference type, appearance, forbidden changes, outfits, and default continuity locks.
+- [ ] Style round trip preserves prompt, camera, lighting, and animation characteristics.
+- [ ] Location round trip preserves environment, constraints, lighting, weather, and time of day.
+- [ ] Search by name/description/tag and favorites filtering return expected library items.
+- [ ] Select the same Character/Style/Location in two different projects and confirm both projects store only stable library IDs, not copied library metadata.
+- [ ] Attempt to delete a Character/Style/Location referenced by a project and confirm HTTP 409 includes referencing project IDs.
+- [ ] Remove all project references, delete the library item, and confirm deletion succeeds without deleting unrelated media.
+- [ ] Upload PNG/JPEG/WebP/GIF and a short supported video reference; confirm global media is stored below `library/originals/` and metadata uses `project_id = NULL`.
+- [ ] FFmpeg creates a bounded PNG preview under `library/previews/` for supported image/video media.
+- [ ] Preview endpoint returns the derived image and accepts range-safe normal browser requests.
+- [ ] Test visual filename with spaces and shell metacharacters; confirm FFmpeg argument-list invocation treats it only as a path.
+- [ ] Reject `../`, `..\\`, rooted/segmented, unsupported-extension, non-image/video, empty, and oversized visual uploads.
+- [ ] Asset metadata supports tags, favorites, search, source description, and preview presence after restart.
+- [ ] Attempt to delete an Asset Library entry referenced by a Character/Style/Location and confirm HTTP 409 includes referencing item IDs.
+- [ ] Delete an unreferenced Asset Library entry and confirm only the index entry is removed; underlying original/preview media remains for explicit cleanup/recovery.
+- [ ] Save project-specific character outfit, continuity locks, presence/confidence/isolation state values; restart backend and confirm state is restored.
+- [ ] Reject character state for a character not referenced by the project, an outfit belonging to another character, and state values outside 0–1.
+- [ ] Project editor shows reusable Character/Style/Location selectors and preserves the Song reference while modifying visual selections.
+- [ ] Character continuity UI remains separate from global Character metadata and requires a saved project reference.
+- [ ] Visual Library UI supports create/edit/delete, search/type filter, favorites, asset upload, previews, and conflict feedback.
+- [ ] Keyboard/focus/accessibility pass for selectors, library editor, asset controls, continuity locks, and range inputs.
+- [ ] Responsive pass for reference selectors, library layout, and asset cards at desktop/tablet/mobile widths.
+
+## Cross-cutting security/data checks after Blocks 1–7
 
 - [ ] Search source/config/exported project data for accidentally committed/resolved credentials.
 - [ ] Upload filenames containing `../`, `..\\`, separators, and invalid characters are rejected.
 - [ ] FFmpeg/ffprobe execution uses argument lists/typed process invocation; test a filename containing spaces/shell metacharacters and verify it is treated only as a path argument.
-- [ ] Project/song/analysis operations do not mutate or delete the original uploaded audio bytes.
+- [ ] Project/song/analysis/library operations do not mutate or silently delete original uploaded media bytes.
 - [ ] Restart application between key operations and verify DuckDB remains the source of truth.
 
 ---
 
 ## Future block validation
 
-Add concrete executable checks here whenever Blocks 7–14 are implemented. Keep implementation checkboxes in `PLAN.md`; keep unexecuted proof here.
+Add concrete executable checks here whenever Blocks 8–14 are implemented. Keep implementation checkboxes in `PLAN.md`; keep unexecuted proof here.
