@@ -7,20 +7,6 @@ public interface IProviderCatalog
     ValueTask<IReadOnlyCollection<ProviderDescriptor>> ListAsync(CancellationToken cancellationToken = default);
 }
 
-public interface IApplicationPersistence
-{
-    Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default);
-}
-
-public readonly record struct MediaLocation(string Value);
-
-public interface IMediaStorage
-{
-    Task<MediaLocation> SaveAsync(Stream source, string fileName, CancellationToken cancellationToken = default);
-
-    Task<Stream> OpenReadAsync(MediaLocation location, CancellationToken cancellationToken = default);
-}
-
 public sealed record JobEnvelope(Guid Id, string Type, string Payload);
 
 public interface IJobQueue
