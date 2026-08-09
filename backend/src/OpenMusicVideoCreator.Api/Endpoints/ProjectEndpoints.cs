@@ -21,12 +21,7 @@ public static class ProjectEndpoints
             CancellationToken cancellationToken) =>
         {
             var project = await service.GetAsync(id, cancellationToken);
-            if (project is null)
-            {
-                return Results.NotFound();
-            }
-
-            return Results.Ok(ProjectResponse.FromDomain(project));
+            return project is null ? Results.NotFound() : Results.Ok(ProjectResponse.FromDomain(project));
         })
             .WithName("GetProject")
             .Produces<ProjectResponse>(StatusCodes.Status200OK)
@@ -44,10 +39,7 @@ public static class ProjectEndpoints
             }
             catch (ArgumentException exception)
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["project"] = [exception.Message],
-                });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["project"] = [exception.Message] });
             }
         })
             .WithName("CreateProject")
@@ -71,10 +63,7 @@ public static class ProjectEndpoints
             }
             catch (ArgumentException exception)
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["project"] = [exception.Message],
-                });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["project"] = [exception.Message] });
             }
         })
             .WithName("UpdateProject")
@@ -97,6 +86,61 @@ public static class ProjectEndpoints
             .WithName("DeleteProject")
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{id:guid}/song", async Task<IResult> (
+            Guid id,
+            ProjectMediaService mediaService,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var song = await mediaService.GetSongAsync(id, cancellationToken);
+                return song is null
+                    ? Results.NotFound()
+                    : Results.Ok(ProjectSongResponse.FromApplication(song));
+            }
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound();
+            }
+        })
+            .WithName("GetProjectSong")
+            .Produces<ProjectSongResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
+        group.MapPost("/{id:guid}/song", async Task<IResult> (
+            Guid id,
+            IFormFile file,
+            ProjectMediaService mediaService,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                await using var stream = file.OpenReadStream(ProjectMediaService.MaxSongBytes);
+                var song = await mediaService.UploadSongAsync(
+                    id,
+                    stream,
+                    file.FileName,
+                    file.ContentType,
+                    file.Length,
+                    cancellationToken);
+                return Results.Ok(ProjectSongResponse.FromApplication(song));
+            }
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (ArgumentException exception)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["song"] = [exception.Message] });
+            }
+        })
+            .DisableAntiforgery()
+            .WithName("UploadProjectSong")
+            .Accepts<IFormFile>("multipart/form-data")
+            .Produces<ProjectSongResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesValidationProblem();
 
         group.MapGet("/{id:guid}/export", async Task<IResult> (
             Guid id,
@@ -129,10 +173,7 @@ public static class ProjectEndpoints
             }
             catch (Exception exception) when (exception is ArgumentException or InvalidDataException or JsonException)
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["project"] = [exception.Message],
-                });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["project"] = [exception.Message] });
             }
         })
             .WithName("ImportProject")
