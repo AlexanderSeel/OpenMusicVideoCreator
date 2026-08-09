@@ -75,13 +75,15 @@ public sealed class DuckDbMediaAssetRepository : IMediaAssetRepository
             );
             """;
         command.Parameters.Add(new DuckDBParameter("id", asset.Id));
-        command.Parameters.Add(new DuckDBParameter("project_id", asset.ProjectId.HasValue ? asset.ProjectId.Value : DBNull.Value));
+        command.Parameters.Add(new DuckDBParameter("project_id", (object?)asset.ProjectId ?? DBNull.Value));
         command.Parameters.Add(new DuckDBParameter("location", asset.Location));
         command.Parameters.Add(new DuckDBParameter("checksum", asset.ChecksumSha256));
         command.Parameters.Add(new DuckDBParameter("mime_type", asset.MimeType));
-        command.Parameters.Add(new DuckDBParameter("width", asset.Width.HasValue ? asset.Width.Value : DBNull.Value));
-        command.Parameters.Add(new DuckDBParameter("height", asset.Height.HasValue ? asset.Height.Value : DBNull.Value));
-        command.Parameters.Add(new DuckDBParameter("duration_ms", asset.Duration.HasValue ? (long)asset.Duration.Value.TotalMilliseconds : DBNull.Value));
+        command.Parameters.Add(new DuckDBParameter("width", (object?)asset.Width ?? DBNull.Value));
+        command.Parameters.Add(new DuckDBParameter("height", (object?)asset.Height ?? DBNull.Value));
+        command.Parameters.Add(new DuckDBParameter(
+            "duration_ms",
+            asset.Duration.HasValue ? (object)(long)asset.Duration.Value.TotalMilliseconds : DBNull.Value));
         command.Parameters.Add(new DuckDBParameter("file_size", asset.FileSize));
         command.Parameters.Add(new DuckDBParameter("creation_source", asset.CreationSource.ToString()));
         command.Parameters.Add(new DuckDBParameter("created_utc", asset.CreatedUtc.UtcDateTime));
