@@ -6,7 +6,7 @@ const panelPath = new URL("../src/features/analysis/SongAnalysisPanel.tsx", impo
 const studioPath = new URL("../src/features/projects/ProjectStudio.tsx", import.meta.url);
 const stylesPath = new URL("../app/globals.css", import.meta.url);
 
-test("song analysis UI exposes waveform, rhythm markers, lyrics lane, and editable Structure Map", async () => {
+test("song analysis UI exposes waveform, rhythm markers, vocal estimate, lyrics timing, and editable Structure Map", async () => {
   const [panel, studio, styles] = await Promise.all([
     readFile(panelPath, "utf8"),
     readFile(studioPath, "utf8"),
@@ -19,7 +19,12 @@ test("song analysis UI exposes waveform, rhythm markers, lyrics lane, and editab
   assert.match(panel, /analysis\.bars/);
   assert.match(panel, /analysis\.phrases/);
   assert.match(panel, /analysis\.quietRanges/);
-  assert.match(panel, /Lyrics lane/);
+  assert.match(panel, /Likely vocal/);
+  assert.match(panel, /Likely instrumental/);
+  assert.match(panel, /analysis\.vocalActivity/);
+  assert.match(panel, /Lyrics lane · authoritative text/);
+  assert.match(panel, /getLyricTiming/);
+  assert.match(panel, /Transcription only suggests timestamps/);
   assert.match(panel, /Structure Map/);
   assert.match(panel, /Save Structure Map/);
   assert.match(panel, /start in seconds/);
