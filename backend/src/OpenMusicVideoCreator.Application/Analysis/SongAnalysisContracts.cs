@@ -44,3 +44,14 @@ public interface ISongAnalysisRepository
 
     Task UpsertAsync(SongAnalysis analysis, CancellationToken cancellationToken = default);
 }
+
+public interface ILyricTimingRepository
+{
+    Task<LyricTimingAnalysis?> GetLatestAsync(Guid projectId, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<LyricTimingAnalysis>> ListVersionsAsync(
+        Guid projectId,
+        CancellationToken cancellationToken = default);
+
+    Task UpsertAsync(LyricTimingAnalysis analysis, CancellationToken cancellationToken = default);
+}
