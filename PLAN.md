@@ -21,32 +21,6 @@ This file contains **unfinished work only**. Work in complete blocks. A block is
 
 ---
 
-## Block 2 — Persistence, project domain, and media storage
-
-Implement the durable project foundation using DuckDB for metadata and files/object storage for media.
-
-### Scope
-
-- Define project aggregate/data model for title, artist, lyrics, storyline, meaning, visual direction, mood, genre, output targets, preset, budgets, and references.
-- Implement DuckDB connection/migration/bootstrap strategy.
-- Implement repositories for projects and application/project settings.
-- Implement media storage abstraction and local filesystem implementation.
-- Persist media metadata: URI/path, checksum, MIME type, dimensions, duration, size, and creation source.
-- Create deterministic per-project directory layout matching the master prompt.
-- Implement project CRUD API and tests.
-- Implement portable `project.json` export/import representation without making it authoritative at runtime.
-- Validate uploaded filenames/paths and prevent path traversal.
-
-### Acceptance
-
-- Project data survives backend restart.
-- Project create/read/update/delete and settings persistence have automated integration tests against a real temporary DuckDB database.
-- Media blobs are not stored inside DuckDB.
-- Import/export round-trip preserves supported project metadata.
-- Deleting or replacing references does not silently destroy unrelated generated assets.
-
----
-
 ## Block 3 — Provider abstraction, credentials, and mock providers
 
 Create provider-independent capability contracts before integrating paid services.
