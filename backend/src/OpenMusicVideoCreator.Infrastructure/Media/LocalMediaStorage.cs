@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using OpenMusicVideoCreator.Application.Abstractions;
-using OpenMusicVideoCreator.Infrastructure.Persistence;
 
 namespace OpenMusicVideoCreator.Infrastructure.Media;
 
@@ -20,19 +19,17 @@ public sealed class LocalMediaStorage : IMediaStorage
         "renders",
     ];
 
-    private readonly string _root;
+    private readonly LocalMediaPathResolver _paths;
 
-    public LocalMediaStorage(StorageOptions options)
+    public LocalMediaStorage(LocalMediaPathResolver paths)
     {
-        ArgumentNullException.ThrowIfNull(options);
-        _root = Path.GetFullPath(options.ProjectsRoot);
-        Directory.CreateDirectory(_root);
+        _paths = paths;
     }
 
     public Task EnsureProjectLayoutAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var projectRoot = GetProjectRoot(projectId);
+        var projectRoot = _paths.GetProjectRoot(projectId);
         foreach (var directory in ProjectDirectories)
         {
             Directory.CreateDirectory(Path.Combine(projectRoot, directory));
@@ -52,11 +49,11 @@ public sealed class LocalMediaStorage : IMediaStorage
         ValidateFileName(fileName);
         await EnsureProjectLayoutAsync(projectId, cancellationToken);
 
-        var targetDirectory = Path.Combine(GetProjectRoot(projectId), GetAreaDirectory(area));
+        var targetDirectory = Path.Combine(_paths.GetProjectRoot(projectId), GetAreaDirectory(area));
         Directory.CreateDirectory(targetDirectory);
 
         var storedFileName = $"{Guid.NewGuid():N}-{fileName}";
-        var targetPath = EnsureInsideRoot(Path.Combine(targetDirectory, storedFileName));
+        var targetPath = _paths.EnsureInsideRoot(Path.Combine(targetDirectory, storedFileName));
 
         try
         {
@@ -80,7 +77,7 @@ public sealed class LocalMediaStorage : IMediaStorage
                 useAsync: true);
             var hash = await SHA256.HashDataAsync(checksumStream, cancellationToken);
             var fileInfo = new FileInfo(targetPath);
-            var relative = Path.GetRelativePath(_root, targetPath).Replace(Path.DirectorySeparatorChar, '/');
+            var relative = Path.GetRelativePath(_paths.Root, targetPath).Replace(Path.DirectorySeparatorChar, '/');
 
             return new StoredMedia(
                 new MediaLocation(relative),
@@ -103,7 +100,7 @@ public sealed class LocalMediaStorage : IMediaStorage
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var path = ResolveLocation(location);
+        var path = _paths.Resolve(location);
         Stream stream = new FileStream(
             path,
             FileMode.Open,
@@ -117,7 +114,7 @@ public sealed class LocalMediaStorage : IMediaStorage
     public Task<bool> DeleteAsync(MediaLocation location, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var path = ResolveLocation(location);
+        var path = _paths.Resolve(location);
         if (!File.Exists(path))
         {
             return Task.FromResult(false);
@@ -125,35 +122,6 @@ public sealed class LocalMediaStorage : IMediaStorage
 
         File.Delete(path);
         return Task.FromResult(true);
-    }
-
-    private string GetProjectRoot(Guid projectId) =>
-        EnsureInsideRoot(Path.Combine(_root, projectId.ToString("D")));
-
-    private string ResolveLocation(MediaLocation location)
-    {
-        if (string.IsNullOrWhiteSpace(location.Value) || Path.IsPathRooted(location.Value))
-        {
-            throw new ArgumentException("Media location must be a relative storage path.", nameof(location));
-        }
-
-        return EnsureInsideRoot(Path.Combine(_root, location.Value.Replace('/', Path.DirectorySeparatorChar)));
-    }
-
-    private string EnsureInsideRoot(string candidate)
-    {
-        var fullPath = Path.GetFullPath(candidate);
-        var rootWithSeparator = _root.EndsWith(Path.DirectorySeparatorChar)
-            ? _root
-            : _root + Path.DirectorySeparatorChar;
-
-        if (!fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(fullPath, _root, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Resolved media path escapes the configured storage root.");
-        }
-
-        return fullPath;
     }
 
     private static string GetAreaDirectory(MediaStorageArea area) => area switch
@@ -171,7 +139,8 @@ public sealed class LocalMediaStorage : IMediaStorage
     private static void ValidateFileName(string fileName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
-        if (!string.Equals(Path.GetFileName(fileName), fileName, StringComparison.Ordinal) ||
+        if (fileName.IndexOfAny(['/', '\\']) >= 0 ||
+            !string.Equals(Path.GetFileName(fileName), fileName, StringComparison.Ordinal) ||
             fileName is "." or ".." ||
             fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
         {
