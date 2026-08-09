@@ -9,17 +9,20 @@ public sealed class VisualLibraryService
     private readonly IVisualLibraryRepository _library;
     private readonly IAssetLibraryRepository _assets;
     private readonly IProjectRepository _projects;
+    private readonly IProjectCharacterStateRepository _characterStates;
     private readonly TimeProvider _timeProvider;
 
     public VisualLibraryService(
         IVisualLibraryRepository library,
         IAssetLibraryRepository assets,
         IProjectRepository projects,
+        IProjectCharacterStateRepository characterStates,
         TimeProvider timeProvider)
     {
         _library = library;
         _assets = assets;
         _projects = projects;
+        _characterStates = characterStates;
         _timeProvider = timeProvider;
     }
 
@@ -32,10 +35,7 @@ public sealed class VisualLibraryService
     {
         var items = await _library.ListAsync(cancellationToken);
         IEnumerable<VisualLibraryItem> filtered = items;
-        if (kind.HasValue)
-        {
-            filtered = filtered.Where(item => item.Kind == kind.Value);
-        }
+        if (kind.HasValue) filtered = filtered.Where(item => item.Kind == kind.Value);
         if (!string.IsNullOrWhiteSpace(query))
         {
             var term = query.Trim();
@@ -47,26 +47,17 @@ public sealed class VisualLibraryService
         if (tags is { Count: > 0 })
         {
             var required = tags.Where(tag => !string.IsNullOrWhiteSpace(tag)).Select(tag => tag.Trim()).ToArray();
-            filtered = filtered.Where(item => required.All(requiredTag =>
-                item.Tags.Contains(requiredTag, StringComparer.OrdinalIgnoreCase)));
+            filtered = filtered.Where(item => required.All(requiredTag => item.Tags.Contains(requiredTag, StringComparer.OrdinalIgnoreCase)));
         }
-        if (favoritesOnly)
-        {
-            filtered = filtered.Where(item => item.IsFavorite);
-        }
+        if (favoritesOnly) filtered = filtered.Where(item => item.IsFavorite);
 
-        return filtered
-            .OrderByDescending(item => item.IsFavorite)
-            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return filtered.OrderByDescending(item => item.IsFavorite).ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     public Task<VisualLibraryItem?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>
         _library.GetAsync(id, cancellationToken);
 
-    public async Task<VisualLibraryItem> CreateAsync(
-        VisualLibraryDraft draft,
-        CancellationToken cancellationToken = default)
+    public async Task<VisualLibraryItem> CreateAsync(VisualLibraryDraft draft, CancellationToken cancellationToken = default)
     {
         await ValidateAssetReferencesAsync(draft, cancellationToken);
         var item = VisualLibraryItem.Create(Guid.NewGuid(), draft, GetUtcNow());
@@ -74,10 +65,7 @@ public sealed class VisualLibraryService
         return item;
     }
 
-    public async Task<VisualLibraryItem> UpdateAsync(
-        Guid id,
-        VisualLibraryDraft draft,
-        CancellationToken cancellationToken = default)
+    public async Task<VisualLibraryItem> UpdateAsync(Guid id, VisualLibraryDraft draft, CancellationToken cancellationToken = default)
     {
         var existing = await _library.GetAsync(id, cancellationToken)
             ?? throw new KeyNotFoundException($"Library item '{id}' was not found.");
@@ -90,10 +78,7 @@ public sealed class VisualLibraryService
     public async Task<LibraryDeleteResult> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var existing = await _library.GetAsync(id, cancellationToken);
-        if (existing is null)
-        {
-            return new LibraryDeleteResult(false, []);
-        }
+        if (existing is null) return new LibraryDeleteResult(false, []);
 
         var referenceKind = existing.Kind switch
         {
@@ -104,26 +89,28 @@ public sealed class VisualLibraryService
         };
         var projects = await _projects.ListAsync(cancellationToken);
         var referencingProjects = projects
-            .Where(project => project.References.Any(reference =>
-                reference.Kind == referenceKind && reference.ReferenceId == id))
+            .Where(project => project.References.Any(reference => reference.Kind == referenceKind && reference.ReferenceId == id))
             .Select(project => project.Id)
             .ToArray();
-        if (referencingProjects.Length > 0)
+        if (referencingProjects.Length > 0) return new LibraryDeleteResult(false, referencingProjects);
+
+        if (existing.Kind == VisualLibraryKind.Character)
         {
-            return new LibraryDeleteResult(false, referencingProjects);
+            foreach (var project in projects)
+            {
+                await _characterStates.DeleteAsync(project.Id, id, cancellationToken);
+            }
         }
 
         return new LibraryDeleteResult(await _library.DeleteAsync(id, cancellationToken), []);
     }
 
-    private async Task ValidateAssetReferencesAsync(
-        VisualLibraryDraft draft,
-        CancellationToken cancellationToken)
+    private async Task ValidateAssetReferencesAsync(VisualLibraryDraft draft, CancellationToken cancellationToken)
     {
-        var assetIds = draft.AssetEntryIds
-            .Concat(draft.Character?.Outfits.SelectMany(outfit => outfit.AssetEntryIds) ?? [])
-            .Distinct()
-            .ToArray();
+        var outfitAssets = draft.Character is null
+            ? Enumerable.Empty<Guid>()
+            : draft.Character.Outfits.SelectMany(outfit => outfit.AssetEntryIds);
+        var assetIds = draft.AssetEntryIds.Concat(outfitAssets).Distinct().ToArray();
         foreach (var assetId in assetIds)
         {
             if (await _assets.GetAsync(assetId, cancellationToken) is null)
@@ -160,9 +147,7 @@ public sealed class ProjectCharacterStateService
         _timeProvider = timeProvider;
     }
 
-    public Task<IReadOnlyList<ProjectCharacterState>> ListAsync(
-        Guid projectId,
-        CancellationToken cancellationToken = default) =>
+    public Task<IReadOnlyList<ProjectCharacterState>> ListAsync(Guid projectId, CancellationToken cancellationToken = default) =>
         _states.ListAsync(projectId, cancellationToken);
 
     public async Task<ProjectCharacterState> SaveAsync(
@@ -175,8 +160,7 @@ public sealed class ProjectCharacterStateService
     {
         var project = await _projects.GetAsync(projectId, cancellationToken)
             ?? throw new KeyNotFoundException($"Project '{projectId}' was not found.");
-        if (!project.References.Any(reference =>
-                reference.Kind == ProjectReferenceKind.Character && reference.ReferenceId == characterId))
+        if (!project.References.Any(reference => reference.Kind == ProjectReferenceKind.Character && reference.ReferenceId == characterId))
         {
             throw new InvalidOperationException("Character must be referenced by the project before project state can be configured.");
         }
@@ -193,13 +177,8 @@ public sealed class ProjectCharacterStateService
         }
 
         ProjectCharacterState.ValidateStateValues(stateValues);
-        var state = new ProjectCharacterState(
-            projectId,
-            characterId,
-            outfitId,
-            locks,
-            new Dictionary<string, double>(stateValues, StringComparer.OrdinalIgnoreCase),
-            GetUtcNow());
+        var normalizedValues = stateValues.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        var state = new ProjectCharacterState(projectId, characterId, outfitId, locks, normalizedValues, GetUtcNow());
         await _states.UpsertAsync(state, cancellationToken);
         return state;
     }
