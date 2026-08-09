@@ -21,29 +21,6 @@ This file contains **unfinished work only**. Work in complete blocks. A block is
 
 ---
 
-## Block 3 — Provider abstraction, credentials, and mock providers
-
-Create provider-independent capability contracts before integrating paid services.
-
-### Scope
-
-- Define capability interfaces for text, image, image editing, video, image-to-video, video-to-video, lip sync, upscale, transcription, and vision evaluation.
-- Define provider/model capability metadata: reference support, start/end frame support, seed, negative prompts, durations, aspect ratios, resolutions, reference limits, native audio, etc.
-- Define provider/model catalog abstraction with dynamic discovery where available and separately updateable static catalogs otherwise.
-- Implement provider settings: enabled, credential reference, model defaults, concurrency, timeout, retries, allowed operations, priority, fallback priority.
-- Implement credential abstraction using environment variables and OS/external secret references; DuckDB stores references only.
-- Define normalized provider request/result/error contracts.
-- Add `MockDirectorProvider`, `MockImageProvider`, and `MockVideoProvider` supporting success, delayed completion, rate limit, quota exhaustion, rejection, transient failure, and permanent failure.
-
-### Acceptance
-
-- Core/Application code has no direct dependency on a concrete AI vendor SDK.
-- UI/API can query provider/model capabilities without hard-coded global model assumptions.
-- Secrets are never returned by APIs or persisted in DuckDB/project exports.
-- Mock providers can drive all normal automated tests offline.
-
----
-
 ## Block 4 — Persistent job engine and generation state machine
 
 Implement recoverable asynchronous execution before real generation workflows.
