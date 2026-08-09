@@ -1,6 +1,11 @@
 using System.Reflection;
+using OpenMusicVideoCreator.Api.Endpoints;
 using OpenMusicVideoCreator.Api.Middleware;
+using OpenMusicVideoCreator.Application.Abstractions;
+using OpenMusicVideoCreator.Application.Projects;
 using OpenMusicVideoCreator.Application.SystemInfo;
+using OpenMusicVideoCreator.Infrastructure.Media;
+using OpenMusicVideoCreator.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,7 +37,26 @@ builder.Services.AddCors(options =>
     });
 });
 
+var storageOptions = new StorageOptions(
+    builder.Configuration["Storage:DatabasePath"] ?? StorageOptions.Default.DatabasePath,
+    builder.Configuration["Storage:ProjectsRoot"] ?? StorageOptions.Default.ProjectsRoot);
+
+builder.Services.AddSingleton(storageOptions);
+builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+builder.Services.AddSingleton<DuckDbConnectionFactory>();
+builder.Services.AddSingleton<DuckDbDatabase>();
+builder.Services.AddSingleton<IApplicationPersistence>(services => services.GetRequiredService<DuckDbDatabase>());
+builder.Services.AddSingleton<IProjectRepository, DuckDbProjectRepository>();
+builder.Services.AddSingleton<DuckDbSettingsRepository>();
+builder.Services.AddSingleton<IApplicationSettingsRepository>(services => services.GetRequiredService<DuckDbSettingsRepository>());
+builder.Services.AddSingleton<IProjectSettingsRepository>(services => services.GetRequiredService<DuckDbSettingsRepository>());
+builder.Services.AddSingleton<IMediaAssetRepository, DuckDbMediaAssetRepository>();
+builder.Services.AddSingleton<IMediaStorage, LocalMediaStorage>();
+builder.Services.AddSingleton<ProjectService>();
+
 var app = builder.Build();
+
+await app.Services.GetRequiredService<IApplicationPersistence>().InitializeAsync();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseCors("Frontend");
@@ -56,6 +80,8 @@ app.MapGet("/api/system/version", (IHostEnvironment environment) =>
     })
     .WithName("GetSystemVersion")
     .Produces<SystemVersionResponse>(StatusCodes.Status200OK);
+
+app.MapProjectEndpoints();
 
 app.Run();
 
