@@ -34,6 +34,7 @@ public sealed record GenerationJob(
     JobState? ResumeState,
     int Priority,
     int AttemptCount,
+    int RetryCount,
     int MaxRetries,
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc,
