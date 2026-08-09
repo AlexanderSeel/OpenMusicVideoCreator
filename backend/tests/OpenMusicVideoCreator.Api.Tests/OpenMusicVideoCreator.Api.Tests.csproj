@@ -16,5 +16,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenMusicVideoCreator.Api\OpenMusicVideoCreator.Api.csproj" />
+    <ProjectReference Include="..\..\src\OpenMusicVideoCreator.Infrastructure\OpenMusicVideoCreator.Infrastructure.csproj" />
   </ItemGroup>
 </Project>
