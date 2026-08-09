@@ -76,7 +76,7 @@ public sealed class FfmpegAudioSignalAnalyzer : IAudioSignalAnalyzer
             var offset = 0;
             if (hasCarry)
             {
-                ProcessSample(BinaryPrimitives.ReadInt16LittleEndian([carry, buffer[0]]));
+                ProcessSample(unchecked((short)(carry | (buffer[0] << 8))));
                 offset = 1;
                 hasCarry = false;
             }
