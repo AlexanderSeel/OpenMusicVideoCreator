@@ -1,156 +1,41 @@
 # OpenMusicVideoCreator Architecture
 
-This document describes the architecture that exists in the repository today. Future capabilities belong in `PLAN.md` until implemented.
+This document describes architecture that exists in the repository today. Future capabilities remain unchecked in `PLAN.md` until implemented.
 
 ## Deployment shape
 
-The MVP is a **modular monolith / service-oriented application**, not a distributed microservice system.
+The MVP is a modular monolith / service-oriented application, not a distributed microservice system.
 
 ```text
 Browser
   |
   v
-Next.js frontend
+Next.js / React frontend
   |
-  | HTTP / JSON + SSE, typed from OpenAPI
+  | typed HTTP/JSON + SSE
   v
 ASP.NET Core API host
   |
   +--> Application
-  |      +--> ProjectService
-  |      +--> ProviderSettingsService
-  |      +--> JobService / JobProcessor
-  |      +--> repository/storage/provider/job contracts
-  |      +--> render-engine boundary contract
+  |      ProjectService / ProjectMediaService
+  |      SongAnalysisService
+  |      ProviderSettingsService
+  |      JobService / JobProcessor
+  |      repository, provider, media, analysis and render contracts
   |
   +--> Infrastructure
-         +--> DuckDB repositories
-         +--> local filesystem media storage
-         +--> provider catalog + mock adapters
-         +--> credential resolver
-         +--> job change hub + mock dispatcher
+         DuckDB repositories
+         local media storage/path resolver
+         ffprobe metadata adapter
+         streaming FFmpeg signal analyzer
+         provider catalog + mock adapters
+         credential resolver
+         persistent job adapters
 ```
 
-The backend can later split deployment units if a demonstrated scaling or operational requirement justifies it. Logical service boundaries must not be interpreted as a requirement to deploy microservices.
-
-## Backend layers
-
-### Domain
-
-`OpenMusicVideoCreator.Domain`
-
-Owns core domain concepts and invariants and has no project references to outer layers.
-
-Implemented domain concepts include:
-
-- `MusicVideoProject` / `ProjectDraft`
-- output aspect ratio and resolution
-- generation preset choice
-- project reference IDs/kinds
-- media asset metadata and creation source
-- `GenerationJob` / `JobAttempt`
-- explicit `JobState` and `JobStateMachine`
-
-The job state machine owns legal transitions independently from ASP.NET Core, DuckDB, provider SDKs, or worker infrastructure. Terminal work does not normally transition back to `Queued`; deliberate restart is an explicit operation.
-
-### Application
-
-`OpenMusicVideoCreator.Application`
-
-Coordinates use cases and owns interfaces for external capabilities. Important seams include:
-
-- `IProjectRepository`
-- `IApplicationSettingsRepository`
-- `IProjectSettingsRepository`
-- `IMediaAssetRepository`
-- `IApplicationPersistence`
-- `IMediaStorage`
-- `IProviderCatalog`
-- `ICredentialResolver`
-- provider capability interfaces
-- `IJobRepository`
-- `IJobQueue`
-- `IJobExecutionDispatcher`
-- `IJobChangePublisher`
-- `IJobChangeStream`
-- `IRenderEngine`
-
-`ProjectService` owns project CRUD plus versioned portable JSON export/import. `ProviderSettingsService` validates provider/model settings. `JobService` owns durable job lifecycle, dependencies, pause/resume/retry/restart/cancel, retry scheduling, provider-failure mapping, and startup reconciliation. `JobProcessor` performs claim → dispatch → persisted result/failure coordination.
-
-Application references Domain only.
-
-### Provider capability contracts
-
-Application defines separate capability interfaces rather than a vendor-shaped provider interface:
-
-- `ITextGenerationProvider`
-- `IImageGenerationProvider`
-- `IImageEditingProvider`
-- `IVideoGenerationProvider`
-- `IImageToVideoProvider`
-- `IVideoToVideoProvider`
-- `ILipSyncProvider`
-- `IUpscaleProvider`
-- `ITranscriptionProvider`
-- `IVisionEvaluationProvider`
-- `IDirectorProvider`
-
-Provider requests/results use application-owned records. Vendor SDK types must remain inside future provider adapters.
-
-`ProviderModelDescriptor` carries capabilities such as references, start/end frames, seeds, negative prompts, native audio, duration options, aspect ratios, resolutions, and reference limits. Consumers query descriptors instead of inferring support from provider/model names.
-
-### Infrastructure
-
-`OpenMusicVideoCreator.Infrastructure`
-
-Current concrete adapters include:
-
-- `DuckDbDatabase`
-- `DuckDbProjectRepository`
-- `DuckDbSettingsRepository`
-- `DuckDbMediaAssetRepository`
-- `DuckDbJobRepository`
-- `LocalMediaStorage`
-- `MockProviderCatalog`
-- `CredentialResolver`
-- `MockDirectorProvider`
-- `MockImageProvider`
-- `MockVideoProvider`
-- `MockJobExecutionDispatcher`
-- `JobChangeHub`
-
-DuckDB access uses `DuckDB.NET.Data.Full`. Operations open short-lived database connections rather than treating process memory as authoritative state.
-
-`DuckDbJobRepository` persists jobs, dependencies, attempts, claim owner/expiry, scheduling, provider task IDs, normalized errors, and cost metadata. A short process-local claim gate serializes the candidate-selection/update transaction for the current one-process deployment. The lock is only a concurrency aid; the persisted row remains authoritative.
-
-`JobChangeHub` is an in-memory broadcast/wakeup mechanism only. It contains no durable job state.
-
-Infrastructure references Application and depends inward on its abstractions.
-
-### API host
-
-`OpenMusicVideoCreator.Api`
-
-Owns HTTP transport and process hosting. It currently provides:
-
-- `/healthz`
-- `/api/system/version`
-- project CRUD and portable import/export endpoints
-- provider catalog/settings endpoints
-- durable job list/create/control/attempt/dependency endpoints
-- job SSE stream
-- Development OpenAPI endpoint
-- local-development CORS
-- JSON console logging
-- `X-Correlation-ID`
-- infrastructure composition and DuckDB initialization
-- `PersistentJobWorker`
-
-Endpoints map transport DTOs to Application/Domain inputs and remain free of DuckDB SQL, filesystem logic, provider SDK calls, and secret resolution.
+Logical boundaries are deliberately clean enough to split later if a real deployment/scaling requirement appears, but the current deployment remains one backend process.
 
 ## Dependency direction
-
-Allowed compile-time direction:
 
 ```text
 Domain
@@ -165,86 +50,63 @@ Application <--- API
 Infrastructure <--- API
 ```
 
-Forbidden directions include:
+Domain contains no ASP.NET Core, DuckDB, FFmpeg, filesystem, or provider SDK dependencies. Application owns interfaces and use-case coordination. Infrastructure implements external capabilities. API maps HTTP only.
 
-- Domain → Application / Infrastructure / API
-- Application → Infrastructure / API
-- Infrastructure → API
+## Domain
 
-`OpenMusicVideoCreator.ArchitectureTests` checks these assembly-reference rules.
+Implemented domain areas include:
 
-## Frontend
+- `MusicVideoProject` / `ProjectDraft`
+- output aspect ratio and generation preset
+- project references including durable `Song` asset references
+- media asset metadata
+- persistent generation-job state model and state machine
+- versioned `SongAnalysis`
+- waveform buckets, energy points, beat markers and editable song sections
+- derived bars, four-bar phrase windows and quiet ranges
 
-The frontend is a Next.js 16 / React 19 TypeScript application.
+`SongAnalysis.ValidateSections` enforces ordered, non-overlapping ranges within song duration. Edited Structure Maps create new analysis versions rather than mutating previous analysis.
 
-Current responsibilities remain intentionally small:
+Bars/phrases/quiet ranges are deterministic derivations from persisted beat/energy data, so redundant derived arrays do not need separate DuckDB storage.
 
-- application shell
-- bootstrap backend call
-- typed provider-catalog client
-- typed persisted-job list client
-- committed OpenAPI TypeScript snapshot for project/provider/job endpoints
+## Application
 
-The project wizard, generation queue, timeline, and editor UIs belong to later PLAN blocks. Persisted backend state remains authoritative.
+Important application seams now include:
 
-## API contract strategy
+- project/settings/media repositories
+- `IMediaStorage`
+- `IMediaProbe`
+- `IAudioSignalAnalyzer`
+- `ISongAnalysisRepository`
+- provider capability interfaces
+- credential resolver/catalog
+- persistent job repository/queue/change-stream/dispatcher
+- render-engine boundary
 
-ASP.NET Core OpenAPI is the source contract.
+### Project media
 
-`openapi-typescript` generates TypeScript types into:
+`ProjectMediaService` attaches a song to a project using the existing media-storage abstraction. Uploads are validated for safe filename, supported extension/MIME type, non-empty content, and the configured 512 MB limit.
 
-```text
-frontend/src/api/schema.d.ts
-```
+Replacing a song creates a new media asset and changes the project `Song` reference. The previous media asset is not implicitly deleted.
 
-The committed snapshot lets a fresh frontend build without a running backend. Public enums serialize as readable strings. Frontend request/response code derives types from the schema rather than maintaining parallel handwritten models.
+### Song analysis
 
-## Logging and correlation
+`SongAnalysisService`:
 
-The API writes structured JSON console logs through standard .NET logging abstractions.
+1. loads the authoritative project `Song` reference,
+2. probes media metadata through `IMediaProbe`,
+3. analyzes the signal through `IAudioSignalAnalyzer`,
+4. creates waveform/energy/beat data and BPM estimate,
+5. proposes editable sections using energy changes and duration constraints,
+6. persists a new immutable analysis version.
 
-Every request receives `X-Correlation-ID`:
+Saving Structure Map edits creates another version with `UserEdited` section provenance while retaining the same source analysis data.
 
-- incoming values are preserved
-- otherwise a trace/generated ID is used
-- the value is returned in the response
-- the value enters the logging scope
+## Infrastructure
 
-Future project/job/scene/provider operations should add domain identifiers to scopes without logging credentials or sensitive payloads.
+### DuckDB
 
-## Configuration
-
-Safe defaults live in `appsettings.json`; deployment overrides use environment variables.
-
-Current relevant keys:
-
-```text
-Storage:DatabasePath
-Storage:ProjectsRoot
-Jobs:WorkerEnabled
-```
-
-Environment-variable equivalents use ASP.NET Core double underscores.
-
-`Jobs:WorkerEnabled` defaults to `true`. Integration-test hosts disable/remove the hosted worker and drive `JobProcessor` explicitly so state-machine tests remain deterministic.
-
-## Credential references
-
-Provider settings persist `CredentialReference`, never credential values.
-
-Stable kinds:
-
-- `Environment`
-- `OperatingSystem`
-- `External`
-
-The built-in resolver currently implements environment references. OS/external references are stable extension seams for later secret-store adapters. `ResolvedCredential` masks `ToString()` and clears its mutable character buffer on disposal.
-
-## Persistence
-
-DuckDB is the authoritative metadata store.
-
-Schema version **2** contains:
+DuckDB is authoritative for structured application metadata. Current schema version is **3**:
 
 ```text
 schema_migrations
@@ -257,178 +119,117 @@ media_assets
 jobs
 job_dependencies
 job_attempts
+song_analyses
 ```
 
-Schema v1 established projects/settings/media. Schema v2 adds persistent asynchronous execution.
+`song_analyses` stores source asset/version metadata plus waveform, energy, beats and sections as JSON columns. The table has a unique `(project_id, version)` constraint and project/version index.
 
-Project updates replace their own mutable project metadata/collections without silently deleting media assets. Provider settings persist only credential references.
+### Media paths
 
-### Job persistence
+`LocalMediaPathResolver` owns the configured project-media root and path-traversal checks. `LocalMediaStorage`, ffprobe and FFmpeg reuse this single path-resolution policy instead of duplicating filesystem rules.
 
-The `jobs` row stores:
+Large media bytes remain outside DuckDB.
 
-- job/project/scene/parent identifiers
-- type and payload JSON
-- provider/model IDs
-- current state and pause resume-state
-- priority
-- attempt and automatic retry counts/max retries
-- created/updated/next-run/started/completed timestamps
-- provider task ID
-- normalized error code/message
-- estimated/actual cost and currency
-- claim owner and lease expiry
+### ffprobe
 
-`job_dependencies` stores the durable dependency graph. `job_attempts` stores immutable attempt numbers with their changing completion/result metadata.
+`FfprobeMediaProbe` uses `ProcessStartInfo.ArgumentList`, never shell-command interpolation. It reads structured JSON for duration, codec, sample rate, channels and bitrate.
 
-Job updates use the expected persisted state as an optimistic concurrency condition. Worker claiming changes a `Queued` job to `Submitting`, increments the attempt number, records a lease, and inserts its attempt in one transaction.
+### FFmpeg signal analysis
 
-## Media storage
+`FfmpegAudioSignalAnalyzer` safely invokes FFmpeg with typed process arguments and streams mono 8 kHz signed 16-bit PCM from stdout. It does not decode the complete song into memory.
 
-Large audio/image/video bytes do not live in DuckDB.
+It produces:
 
-Default layout:
+- bounded waveform buckets with minimum/maximum/RMS
+- normalized 50 ms energy points
+- local-onset beat candidates with confidence
+- BPM estimate from median beat intervals
+
+Domain inference then derives four-beat bars, four-bar phrases and quiet regions.
+
+Vocal/instrumental classification and transcription-assisted lyric timing are not implemented yet and remain unchecked in `PLAN.md`.
+
+## API
+
+Current project/analysis endpoints include:
 
 ```text
-projects/{project-id}/
-  source/
-  references/
-    characters/
-    styles/
-    locations/
-  analysis/
-  keyframes/
-  generated/
-  proxies/
-  renders/
+GET    /api/projects/
+POST   /api/projects/
+GET    /api/projects/{id}
+PUT    /api/projects/{id}
+DELETE /api/projects/{id}
+GET    /api/projects/{id}/song
+POST   /api/projects/{id}/song
+GET    /api/projects/{projectId}/analysis/
+POST   /api/projects/{projectId}/analysis/
+GET    /api/projects/{projectId}/analysis/versions
+PUT    /api/projects/{projectId}/analysis/sections
 ```
 
-`LocalMediaStorage` accepts controlled storage areas and safe leaf names, creates unique names, writes under the configured root, calculates SHA-256, and returns relative metadata. `media_assets` stores metadata only.
+Provider and persistent-job APIs remain available as documented in `README.md`.
 
-## Portable project documents
+Public enums serialize as readable strings. Frontend contracts are derived from the committed OpenAPI TypeScript snapshot.
 
-`ProjectService` exports a versioned portable JSON document containing supported project metadata/reference IDs. It is interchange/backup data, not a second runtime source of truth. Provider settings/credentials and runtime jobs are not included in portable project metadata.
+## Frontend
 
-## Provider catalog and settings
-
-`IProviderCatalog` is the provider/model discovery boundary. The current `MockProviderCatalog` exposes:
+The current frontend includes a real Simple Mode product workflow:
 
 ```text
-mock-director
-mock-image
-mock-video
+src/features/projects/
+  ProjectStudio.tsx       orchestration
+  ProjectSidebar.tsx      saved-project navigation
+  ProjectForm.tsx         project/song/output inputs
+  projectModel.ts         editor/request helpers
+
+src/features/analysis/
+  SongAnalysisPanel.tsx   analysis controls, waveform and Structure Map
 ```
 
-`ProviderSettingsService` validates default models and allowed operations against the current catalog. Settings include enabled state, credential reference, default models, concurrency, timeout, retries, allowed operations, and priority/fallback priority.
+Simple Mode intentionally hides provider IDs, model IDs, seeds and raw provider JSON.
 
-The API never resolves or returns secret values.
+`SongAnalysisPanel` shows:
 
-## Normalized provider failures
+- duration/BPM/sample-rate summary
+- waveform
+- beat and bar markers
+- phrase spans
+- quiet-range shading
+- supplied lyrics lane
+- editable section labels/types/start/end boundaries
+- analysis version number
 
-Provider adapters return `ProviderResult<T>` with normalized usage/failure information. Failure codes include:
+The supplied project lyrics remain authoritative text; current analysis does not modify them.
 
-- rate limited
-- provider unavailable
-- quota exhausted
-- insufficient credits
-- authentication failed
-- moderation rejected
-- invalid parameters
-- unsupported capability
-- network failure
-- timeout
-- transient failure
-- permanent failure
+## Persistent jobs
 
-The job layer maps these to operational states rather than treating every exception identically.
+Generation job state remains persisted in DuckDB. Normal resume does not regenerate completed work. Provider task IDs survive restart and move work into reconciliation instead of blind resubmission. In-memory job change broadcasts only wake/notify clients; persisted state remains authoritative.
 
-## Persistent job engine
+## Security boundaries
 
-The explicit persisted states are:
+- provider secrets are references, never plaintext DuckDB/project data
+- upload filenames are validated as leaf names
+- local media paths cannot escape configured storage root
+- FFmpeg/ffprobe use argument lists rather than shell strings
+- media bytes are not stored as DuckDB blobs
+- successful generated/media assets are not silently overwritten/deleted
 
-```text
-Draft
-Queued
-Submitting
-ProviderQueued
-Generating
-Downloading
-Validating
-Completed
-Paused
-WaitingForQuota
-WaitingForProvider
-WaitingForDependency
-RetryScheduled
-Rejected
-FailedRetryable
-FailedPermanent
-Cancelled
-```
+## Tests currently present
 
-### Dependencies
+Repository tests cover, among other areas:
 
-A job created with incomplete dependencies starts as `WaitingForDependency`. Maintenance promotes it to `Queued` only when every dependency is `Completed`. A dependency that terminates unsuccessfully moves the dependent to `FailedPermanent` with a dependency error.
+- architecture dependency direction
+- project/persistence/media round trips
+- path traversal protection
+- project song attachment and non-destructive replacement
+- provider catalog/settings/credential non-leakage/mock failures
+- job state/retry/recovery/dependency/duplicate-claim behavior
+- versioned song-analysis persistence
+- invalid Structure Map overlap rejection
+- beat → bar → phrase inference
+- quiet-range inference
+- frontend typed API contract structure
+- Simple Mode provider-independence/accessibility structure
+- waveform/Structure Map UI structure
 
-### Claiming and attempts
-
-`PersistentJobWorker` repeatedly asks `JobProcessor` for work. The repository safely claims the next eligible `Queued` job and creates a numbered attempt. Two local worker calls against the same repository cannot both claim the same job.
-
-Attempt count and automatic retry count are distinct. A new provider/local execution increments attempts; retry count tracks bounded automatic retry scheduling.
-
-### Retry and provider waits
-
-Rate limits/network/timeouts/transient failures schedule bounded retries with provider `RetryAfter` where available or exponential fallback. Quota/credit failures become `WaitingForQuota`; provider outages become `WaitingForProvider`; moderation becomes `Rejected`; invalid/auth/unsupported/permanent failures become `FailedPermanent`.
-
-A persisted provider task ID changes safety semantics: after restart the job moves to `WaitingForProvider` for reconciliation rather than blindly submitting another paid request. Manual `retry` is rejected while such a provider task ID exists. Explicit `restart` is the deliberate destructive execution decision that clears provider-task state and creates a later new attempt.
-
-### Pause/resume/cancel/restart
-
-Controls exist at job, project, and project+scene scope.
-
-- `pause` preserves a safe resume target
-- `resume` never restarts a completed job
-- `retry` handles retryable/waiting states but will not duplicate known provider-side work
-- `restart` is explicit and can requeue terminal work
-- `cancel` terminates the current job state and attempt
-
-Successful completed work therefore remains untouched by normal resume/recovery.
-
-### Startup recovery
-
-On worker startup, active local work with no provider task ID is moved into bounded retry scheduling. Active work that already has a provider task ID enters `WaitingForProvider`. This makes process restart recovery explicit instead of silently assuming a remote request succeeded or failed.
-
-### SSE
-
-`GET /api/jobs/events` provides live notifications. `JobChangeHub` only carries job IDs; the endpoint reloads the durable job from `JobService` before serializing an event. Browser disconnect/reconnect therefore does not lose authoritative job state.
-
-## Rendering
-
-No FFmpeg render process is implemented yet.
-
-`IRenderEngine` is the Application boundary. Concrete FFmpeg/ffprobe execution belongs to later media/render blocks and must use typed process arguments rather than shell-string interpolation.
-
-## Tests
-
-Current automated coverage includes:
-
-- frontend typed contract checks for system/project/provider/job APIs
-- backend architecture dependency tests
-- health/version API tests
-- project CRUD/export/import
-- real temporary DuckDB project/settings/media round trips
-- media path traversal and non-destructive reference updates
-- provider catalog/settings/credential non-leakage/mock failure modes
-- legal/illegal job transitions
-- persisted job/dependency/attempt restart round trip
-- duplicate-worker claim protection
-- job pause/resume/cancel/restart semantics
-- `WaitingForQuota` restart/resume on the same dependency graph
-- startup recovery for local work and provider-task reconciliation
-- provider failure → job-state normalization
-- job HTTP controls
-- job change-hub broadcast behavior
-
-Paid providers are not required for normal tests.
-
-GitHub Actions validates frontend install/lint/typecheck/tests/build, builds backend layers independently, compiles both test projects, runs granular suites, and publishes linked direct-`main` commit statuses including `ci/combined`.
+The full local repository build/typecheck/test suite has not been executed in the current environment because repository checkout/network access is unavailable. FFmpeg/ffprobe command shapes were validated locally against a generated audio fixture without using GitHub Actions.
