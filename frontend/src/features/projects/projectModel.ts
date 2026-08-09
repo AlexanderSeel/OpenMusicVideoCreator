@@ -31,7 +31,8 @@ export function projectToEditor(project: ProjectResponse): EditorState {
 }
 
 export function editorToRequest(editor: EditorState): ProjectUpsertRequest {
-  const { id: _, ...request } = editor;
+  const request: EditorState = { ...editor };
+  delete request.id;
   return request;
 }
 
