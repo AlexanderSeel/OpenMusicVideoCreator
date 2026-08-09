@@ -58,6 +58,11 @@ public interface IJobChangePublisher
     ValueTask PublishAsync(Guid jobId, CancellationToken cancellationToken = default);
 }
 
+public interface IJobChangeStream
+{
+    IAsyncEnumerable<Guid> SubscribeAsync(CancellationToken cancellationToken = default);
+}
+
 public sealed record JobExecutionResult(
     JobState State,
     string? ProviderTaskId = null,
