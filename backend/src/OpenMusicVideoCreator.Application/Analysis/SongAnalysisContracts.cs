@@ -14,7 +14,8 @@ public sealed record AudioSignalAnalysis(
     IReadOnlyList<WaveformBucket> Waveform,
     IReadOnlyList<EnergyPoint> Energy,
     IReadOnlyList<BeatMarker> Beats,
-    double? Bpm);
+    double? Bpm,
+    VocalActivityEstimate? VocalActivity = null);
 
 public interface IMediaProbe
 {
