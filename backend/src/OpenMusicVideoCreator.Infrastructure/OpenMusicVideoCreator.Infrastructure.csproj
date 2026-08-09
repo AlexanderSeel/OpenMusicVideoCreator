@@ -6,4 +6,8 @@
   <ItemGroup>
     <ProjectReference Include="..\OpenMusicVideoCreator.Application\OpenMusicVideoCreator.Application.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DuckDB.NET.Data.Full" />
+  </ItemGroup>
 </Project>
