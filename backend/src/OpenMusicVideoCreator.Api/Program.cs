@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json.Serialization;
 using OpenMusicVideoCreator.Api.Endpoints;
 using OpenMusicVideoCreator.Api.Middleware;
 using OpenMusicVideoCreator.Application.Abstractions;
@@ -15,6 +16,10 @@ builder.Logging.AddJsonConsole(options =>
     options.TimestampFormat = "yyyy-MM-dd'T'HH:mm:ss.fffK";
 });
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options =>
 {
