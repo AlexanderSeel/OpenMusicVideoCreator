@@ -131,7 +131,7 @@ public sealed record StoryboardSceneResponse(
         scene.Id, scene.Sequence, scene.StartSeconds, scene.EndSeconds, scene.Title,
         scene.DirectorIntent, scene.Action, scene.Environment, scene.Camera, scene.TransitionIn,
         scene.CharacterIds, scene.StyleIds, scene.LocationIds, scene.SelectedPromptVersionId,
-        StoryboardSceneDetailsResponse.FromDomain(scene.EffectiveDetails));
+        StoryboardSceneDetailsResponse.FromDomain(scene.ResolveDetails()));
 }
 
 public sealed record StoryboardResponse(
