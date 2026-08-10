@@ -18,6 +18,29 @@ public sealed record VisualArcUpdateRequest(
     DirectorControls Controls,
     IReadOnlyList<VisualArcPointRequest>? Points);
 
+public sealed record StoryboardSceneDetailsRequest(
+    string SongSection,
+    string AssociatedLyric,
+    string Purpose,
+    string Emotion,
+    string Composition,
+    string Lighting,
+    string EnvironmentMotion,
+    string VisualSymbolism,
+    string ContinuityRequirements)
+{
+    public StoryboardSceneDetails ToDomain() => new(
+        SongSection ?? string.Empty,
+        AssociatedLyric ?? string.Empty,
+        Purpose ?? string.Empty,
+        Emotion ?? string.Empty,
+        Composition ?? string.Empty,
+        Lighting ?? string.Empty,
+        EnvironmentMotion ?? string.Empty,
+        VisualSymbolism ?? string.Empty,
+        ContinuityRequirements ?? string.Empty);
+}
+
 public sealed record SceneUpdateRequest(
     double StartSeconds,
     double EndSeconds,
@@ -29,7 +52,8 @@ public sealed record SceneUpdateRequest(
     string TransitionIn,
     IReadOnlyList<Guid>? CharacterIds,
     IReadOnlyList<Guid>? StyleIds,
-    IReadOnlyList<Guid>? LocationIds);
+    IReadOnlyList<Guid>? LocationIds,
+    StoryboardSceneDetailsRequest? Details = null);
 
 public sealed record SceneReorderRequest(IReadOnlyList<Guid>? SceneIds);
 public sealed record PromptRegenerateRequest(string? Notes);
@@ -63,6 +87,29 @@ public sealed record VisualArcResponse(
         arc.Points.Select(VisualArcPointResponse.FromDomain).ToArray(), arc.CreatedUtc);
 }
 
+public sealed record StoryboardSceneDetailsResponse(
+    string SongSection,
+    string AssociatedLyric,
+    string Purpose,
+    string Emotion,
+    string Composition,
+    string Lighting,
+    string EnvironmentMotion,
+    string VisualSymbolism,
+    string ContinuityRequirements)
+{
+    public static StoryboardSceneDetailsResponse FromDomain(StoryboardSceneDetails details) => new(
+        details.SongSection,
+        details.AssociatedLyric,
+        details.Purpose,
+        details.Emotion,
+        details.Composition,
+        details.Lighting,
+        details.EnvironmentMotion,
+        details.VisualSymbolism,
+        details.ContinuityRequirements);
+}
+
 public sealed record StoryboardSceneResponse(
     Guid Id,
     int Sequence,
@@ -77,12 +124,14 @@ public sealed record StoryboardSceneResponse(
     IReadOnlyList<Guid> CharacterIds,
     IReadOnlyList<Guid> StyleIds,
     IReadOnlyList<Guid> LocationIds,
-    Guid? SelectedPromptVersionId)
+    Guid? SelectedPromptVersionId,
+    StoryboardSceneDetailsResponse Details)
 {
     public static StoryboardSceneResponse FromDomain(StoryboardScene scene) => new(
         scene.Id, scene.Sequence, scene.StartSeconds, scene.EndSeconds, scene.Title,
         scene.DirectorIntent, scene.Action, scene.Environment, scene.Camera, scene.TransitionIn,
-        scene.CharacterIds, scene.StyleIds, scene.LocationIds, scene.SelectedPromptVersionId);
+        scene.CharacterIds, scene.StyleIds, scene.LocationIds, scene.SelectedPromptVersionId,
+        StoryboardSceneDetailsResponse.FromDomain(scene.EffectiveDetails));
 }
 
 public sealed record StoryboardResponse(
