@@ -24,6 +24,15 @@ export interface ProjectRenderManifest {
   timelineSha256: string;
 }
 
+export interface ProjectRenderAttempt {
+  attemptNumber: number;
+  state: ProjectRenderState;
+  startedUtc: string;
+  completedUtc?: string | null;
+  commandLog?: string | null;
+  errorMessage?: string | null;
+}
+
 export interface ProjectRenderRecord {
   id: string;
   projectId: string;
@@ -36,6 +45,7 @@ export interface ProjectRenderRecord {
   errorMessage?: string | null;
   createdUtc: string;
   updatedUtc: string;
+  attempts?: ProjectRenderAttempt[] | null;
 }
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5100";
@@ -79,6 +89,20 @@ export async function queueProjectRender(projectId: string, kind: ProjectRenderK
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ kind }),
   }), `Queue ${kind.toLowerCase()} render`);
+}
+
+export async function cancelProjectRender(projectId: string, renderId: string): Promise<ProjectRenderRecord> {
+  return readJson<ProjectRenderRecord>(await fetch(`${rendersUrl(projectId)}/${renderId}/cancel`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+  }), "Cancel render");
+}
+
+export async function retryProjectRender(projectId: string, renderId: string): Promise<ProjectRenderRecord> {
+  return readJson<ProjectRenderRecord>(await fetch(`${rendersUrl(projectId)}/${renderId}/retry`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+  }), "Retry render");
 }
 
 export function projectRenderOutputUrl(projectId: string, renderId: string): string {
