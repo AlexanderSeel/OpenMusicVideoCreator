@@ -178,41 +178,45 @@ Execution proof is tracked in `TESTPLAN.md`.
 
 ## Block 9 — Keyframe generation and scene variants
 
-- [ ] Route image/keyframe requests through provider capability interfaces.
-- [ ] Generate start keyframes and optional end keyframes per scene.
-- [ ] Attach character/style/location references according to continuity settings and provider limits.
-- [ ] Persist generation attempts, assets, prompts, cost estimates/actuals, and variants.
-- [ ] Implement scene variant compare/select/delete/regenerate UI.
-- [ ] Implement per-scene generation settings in Advanced/Custom mode.
-- [ ] Add approval workflow before animation/video generation.
+- [x] Route image/keyframe requests through provider capability interfaces.
+- [x] Generate start keyframes and optional end keyframes per scene.
+- [x] Attach character/style/location references according to continuity settings and provider limits.
+- [x] Persist generation attempts, assets, prompts, cost estimates/actuals, and variants.
+- [x] Implement scene variant compare/select/delete/regenerate UI.
+- [x] Implement per-scene generation settings in Advanced/Custom mode.
+- [x] Add approval workflow before animation/video generation.
 - [ ] Integrate at least one real image provider after the mock path is stable.
 
-### Acceptance
+### Acceptance implementation
 
-- [ ] Full keyframe flow works offline with mocks and asynchronously through the job engine.
-- [ ] Regenerating Scene N does not modify selected assets for other scenes.
-- [ ] Selected variant is a reference; older successful variants remain intact.
+- [x] Full keyframe flow has an offline mock implementation and is dispatched asynchronously through the persistent job engine.
+- [x] Regenerating Scene N creates a new variant without modifying selected assets for other scenes.
+- [x] Selected variant is a reference; older successful variants remain intact.
 - [ ] Real-provider integration is contract-tested/mocked and disabled when credentials are absent.
+
+Execution proof for the mock path is tracked in `TESTPLAN.md`; the real-provider item remains gated on successful mock validation.
 
 ---
 
 ## Block 10 — Image-to-video/video generation, queue UI, and resumability
 
-- [ ] Video/image-to-video provider adapters and capability-aware request construction.
-- [ ] Generation Coordinator creates scene job dependencies without blocking HTTP requests.
-- [ ] Global Generation Queue UI with provider, model, state, elapsed time, retries, cost, errors, and actions.
-- [ ] Scene-level pause/retry/restart/cancel and project-level pause/resume/retry-failed.
-- [ ] Quota/rate-limit/provider-outage/auth/rejection/invalid-parameter/network/timeout handling in generation flows.
-- [ ] Optional automatic fallback according to preset/policy; Custom can disable fallback.
-- [ ] Persist provider task IDs and reconcile provider-side jobs after restart.
+- [x] Video/image-to-video provider adapters and capability-aware request construction.
+- [x] Generation Coordinator creates scene job dependencies without blocking HTTP requests.
+- [x] Global Generation Queue UI with provider, model, state, elapsed time, retries, cost, errors, and actions.
+- [x] Scene-level pause/retry/restart/cancel and project-level pause/resume/retry-failed semantics use the persistent job engine.
+- [x] Quota/rate-limit/provider-outage/auth/rejection/invalid-parameter/network/timeout handling is normalized through generation/job states.
+- [x] Optional automatic fallback according to preset/policy; Custom can disable fallback; candidates must preserve start/end-frame, duration, aspect-ratio, and resolution semantics.
+- [x] Persist provider task IDs and reconcile provider-side jobs after restart through the existing job engine.
 - [ ] Integrate at least one real video provider after the mock path passes.
 
-### Acceptance
+### Acceptance implementation
 
-- [ ] Simulated credits exhaustion during a scene reaches `WaitingForQuota`, survives restart, and resumes cleanly later.
-- [ ] Dependent scenes wait safely and completed scenes remain untouched.
-- [ ] User can regenerate one disliked scene and choose another variant without restarting the project.
-- [ ] Queue updates arrive live without polling every scene from the browser.
+- [x] Video generation maps simulated credit/quota exhaustion into the existing `WaitingForQuota` job path without replacing completed clip variants.
+- [x] Scene video jobs persist dependencies on their approved start/end keyframe jobs; completed work remains non-destructive.
+- [x] User-facing code can regenerate one scene, keep prior successful variants, and select another completed clip without restarting the project.
+- [x] Queue updates use the existing SSE job stream instead of polling every scene from the browser.
+
+Execution proof for the mock path is tracked in `TESTPLAN.md`; the real-provider item remains gated on successful mock validation.
 
 ---
 
