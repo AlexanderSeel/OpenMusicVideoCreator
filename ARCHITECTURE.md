@@ -1,41 +1,42 @@
 # OpenMusicVideoCreator Architecture
 
-This document describes architecture implemented in the repository today. `PLAN.md` tracks implementation progress; `TESTPLAN.md` tracks validation still to execute locally.
+This document describes architecture implemented in the repository today. `PLAN.md` tracks repository-side implementation; `TESTPLAN.md` tracks validation that still needs to execute locally.
 
 ## Deployment shape
 
-The MVP remains a **modular monolith / service-oriented application**, not a distributed microservice system.
+The MVP remains a **modular monolith / service-oriented application**.
 
 ```text
 Browser
   |
+  | HTTP/JSON + SSE
   v
-Next.js / React frontend
+Next.js / React
   |
-  | typed HTTP/JSON + SSE
   v
 ASP.NET Core API host
   |
-  +--> Application use cases/contracts
+  +--> Application
   |      projects + media
   |      song analysis + lyric timing
-  |      reusable visual/asset libraries
-  |      project character continuity/state
-  |      AI Director + Visual Arc + storyboard + prompt history
-  |      provider configuration/capabilities
+  |      reusable visual libraries
+  |      Director / Visual Arc / storyboard / prompts
+  |      keyframe + clip generation coordination
+  |      provider capability/settings ports
   |      persistent job coordination
   |
-  +--> Infrastructure adapters
-         DuckDB repositories/migrations
-         project-settings planning history
-         local project + global library media storage
-         ffprobe / FFmpeg signal + preview adapters
+  +--> Infrastructure
+         DuckDB repositories/settings/jobs
+         filesystem media storage
+         ffprobe / FFmpeg analysis + previews
          credential resolver
-         mock AI providers / structured mock Director
-         persistent job worker/change hub
+         mock Director/Image/Video providers
+         capability-specific provider resolvers
+         keyframe/video job dispatchers
+         persistent background worker + SSE change hub
 ```
 
-Logical boundaries can be split later only if a concrete scaling/deployment need justifies it.
+Logical boundaries can be split later only if a concrete scaling/deployment requirement justifies it.
 
 ## Dependency direction
 
@@ -52,144 +53,162 @@ Application <--- API
 Infrastructure <--- API
 ```
 
-- Domain owns durable concepts/invariants only.
-- Application owns use cases and ports/interfaces.
-- Infrastructure owns DuckDB, filesystem, process execution, provider implementations, and external credentials.
-- API maps HTTP contracts to Application operations.
-- Frontend never becomes an alternative source of truth for persisted state.
+- **Domain** owns durable concepts and invariants only.
+- **Application** owns use cases and ports/interfaces.
+- **Infrastructure** owns DuckDB, filesystem/process/provider implementations and external credentials.
+- **API** maps HTTP contracts to application operations.
+- **Frontend** never becomes an alternative source of truth for persisted state.
 
-## Domain
+## Domain model
 
-Implemented domain areas include:
+Important implemented domain areas now include:
 
-- `MusicVideoProject` / `ProjectDraft`
-- stable project references: Song, Character, Style, Location, AdditionalMedia
+- `MusicVideoProject` and stable Song/Character/Style/Location references
 - media metadata
-- explicit persistent generation-job state machine
-- versioned `SongAnalysis`
-- waveform/energy/beats/sections plus derived bars/phrases/quiet ranges
-- deliberately bounded/low-confidence `VocalActivityEstimate`
-- versioned `LyricTimingAnalysis`
-- `VisualLibraryItem` with Character/Style/Location payloads
-- `AssetLibraryEntry`
-- `ProjectCharacterState`
-- normalized `DirectorControls`
-- versioned `VisualArcVersion` / `VisualArcPoint`
-- versioned `StoryboardVersion` / `StoryboardScene`
-- structured `StoryboardSceneDetails`
-- immutable `PromptVersion` plus versioned `PromptTemplate`
+- explicit persistent generation job state machine
+- immutable/versioned song analysis and lyric timing
+- reusable visual/asset library models
+- project-specific Character continuity/state
+- normalized Director controls
+- versioned Visual Arc and Storyboard
+- structured scene creative details
+- immutable prompt versions/templates
+- `KeyframeVariant` and scene keyframe approval
+- `SceneClipVariant`
+- per-scene keyframe/video generation settings
 
-### Reusable visual library model
+### Planning provenance
 
-A project stores only stable Character/Style/Location IDs. Reusable metadata remains in the global Library.
+A storyboard links one exact Song Analysis and Visual Arc. Scene identity remains stable across storyboard versions. Each scene's selected prompt is an immutable `PromptVersionId`.
 
-Character data includes:
+Keyframes reference that prompt version directly. Animated clips then reference:
 
-- reference type
-- appearance description
-- forbidden changes
-- outfits and outfit asset IDs
-- default continuity locks
+- the same prompt version
+- approved Start keyframe variant
+- optional approved End keyframe variant
+- generation job
+- actual provider/model
+- generated media asset
 
-Style data includes prompt, camera, lighting, and animation characteristics.
+This forms an auditable chain:
 
-Location data includes environment, constraints, lighting, weather, and time of day.
+```text
+Song asset
+  → SongAnalysisId
+  → VisualArcId
+  → StoryboardVersionId / SceneId
+  → PromptVersionId
+  → KeyframeVariantId(s)
+  → SceneClipVariantId
+  → MediaAssetId
+```
 
-Project-specific character state is intentionally separate from the Character Library item. It stores selected outfit, continuity lock overrides, and normalized state values such as presence/confidence/isolation. This is the seed model for later timeline curves without making global Character metadata project-specific.
+Regeneration appends new variants and never overwrites prior successful media.
 
-### Director planning model
+## Application layer
 
-A Visual Arc is immutable/versioned and linked to one exact `SongAnalysisId`. Its normalized controls remain part of the version so later scene/prompt edits can reuse the creative settings that actually produced the storyboard.
-
-A storyboard is also immutable/versioned and links both the exact song analysis and exact Visual Arc. Scene identity remains stable across storyboard versions so prompt history and downstream generation variants can continue to reference the same logical scene.
-
-`StoryboardSceneDetails` carries structured creative planning that should not be collapsed into one opaque prompt string:
-
-- song section and associated lyric
-- scene purpose
-- emotion
-- composition
-- lighting
-- environment motion
-- visual symbolism
-- continuity requirements
-
-Core action/environment/camera/transition fields and Character/Style/Location IDs remain first-class scene data. This allows editing/reordering without reparsing generated text.
-
-Prompt history stores Director Intent separately from the expanded provider prompt. Prompt template name/version and storyboard-version provenance are persisted with every revision. Downstream generation models use immutable `PromptVersionId` references rather than copying an unauditable prompt string.
-
-## Application
-
-Important ports/use cases now include:
+Important ports/use cases include:
 
 - project/settings/media repositories
 - `IMediaStorage`
-- `IMediaProbe` / `IAudioSignalAnalyzer` / `ISongAnalysisRepository`
-- `ILyricTimingRepository`
-- `IVisualLibraryRepository`
-- `IAssetLibraryRepository`
-- `IProjectCharacterStateRepository`
-- `ILibraryMediaStorage`
-- `IMediaPreviewGenerator`
-- `IVisualArcRepository` / `IStoryboardRepository` / `IPromptHistoryRepository`
-- `IDirectorPlanningProvider` / `DirectorPlanningService`
-- provider capability interfaces/catalog/credentials
+- song-analysis and lyric-timing repositories/adapters
+- visual/asset library repositories and media preview ports
+- Visual Arc / Storyboard / Prompt history repositories
+- Director planning provider/service
+- provider catalog/settings/credential abstractions
+- image/image-edit/video/image-to-video/video-to-video capability interfaces
+- keyframe variant/settings/approval services
+- `KeyframeGenerationCoordinator`
+- clip variant/video settings services
+- `VideoGenerationCoordinator`
 - persistent job repository/queue/change stream/dispatcher
-- render-engine boundary
 
-### Song analysis
+### Keyframe coordination
 
-`SongAnalysisService` loads the authoritative Song reference, probes media, analyzes the signal, creates a new immutable analysis version, and persists editable Structure Map sections.
+`KeyframeGenerationCoordinator` resolves the exact selected prompt and a capability-compatible image provider/model. It builds continuity references from reusable Character/Style/Location state while respecting provider limits, persists a planned variant, and then enqueues a durable `keyframe.image.generate` job.
 
-Rhythm derivatives (bars/phrases/quiet ranges) are calculated from persisted base signal data instead of stored redundantly.
+The variant exists before worker execution, closing the race where a fast worker could otherwise finish before generation provenance had been persisted.
 
-Vocal/instrumental activity is a heuristic energy + zero-crossing estimate with intentionally bounded low confidence. Low-information input may return no estimate rather than fabricated certainty.
+### Video coordination
 
-### Lyric timing
+`VideoGenerationCoordinator` requires the **current keyframe selection to be approved**. It resolves approved Start/optional End media and creates a `scene.video.generate` job that depends on the corresponding keyframe jobs.
 
-`LyricTimingService` consumes provider-neutral timestamped transcription segments. It aligns them sequentially to the exact supplied lyric lines and persists timing/confidence separately from project lyrics.
+Provider/model selection requires `ImageToVideo` plus Start-frame support. The coordinator resolves provider-supported duration/resolution and validates project aspect ratio and optional End-frame capability before persistence.
 
-Each timing version records:
+HTTP does not wait for provider work. The persisted job/dependency graph is the orchestration source of truth.
 
-- source media asset ID
-- exact SongAnalysis ID
-- SHA-256 of supplied lyrics
-- exact supplied line text
-- optional start/end suggestion and confidence
+### Compatible fallback plan
 
-Transcription never silently rewrites authoritative lyrics.
+Fallback is a provider-independent policy, not a provider implementation detail.
 
-### Visual Library
+When enabled, the coordinator persists only alternatives that can preserve the same:
 
-`VisualLibraryService` owns create/update/search/filter/delete behavior and validates all referenced Asset Library IDs. Deletion is blocked while any project still references the Character/Style/Location.
+- Start-frame contract
+- End-frame contract when used
+- resolved duration
+- project aspect ratio
+- resolved resolution
 
-`AssetLibraryService` owns visual upload validation, source/preview media metadata, search/tags/favorites/source tracking, and reference-aware deletion. Removing an asset index entry intentionally does not silently delete underlying media bytes.
+The video dispatcher can move to these alternatives for operational failures such as quota/credits, rate limiting, outage, authentication, unsupported adapter capability, network, timeout, or transient failure.
 
-`ProjectCharacterStateService` validates that the project actually references the Character, selected outfits belong to that Character, and state values are normalized to 0–1 before persistence.
+Moderation rejection, invalid parameters, and permanent failures do not silently change provider.
 
-### AI Director / storyboard
+If a fallback succeeds, `SceneClipVariant.ProviderId/ModelId` are updated to the adapter that actually produced the media. Custom mode can disable fallback entirely.
 
-`DirectorPlanningService` builds a provider-independent planning context from:
+## Persistent jobs
 
-- the exact song-analysis version
-- BPM/sections/phrases
-- authoritative lyrics
-- storyline/meaning/visual direction/mood/genre
-- normalized Director controls
-- attached Characters/Styles/Locations
-- project-specific Character continuity state
+The existing Block 4 state machine remains shared by keyframes and clips:
 
-A new plan intentionally uses the latest song analysis. Later Visual Arc edits, scene edits, reordering, and prompt regeneration **do not** silently adopt a newer analysis: the service resolves the storyboard's stored `SongAnalysisId` and `VisualArcId`, validates that those provenance links still match, and uses the referenced Visual Arc controls for prompt expansion.
+```text
+Draft
+Queued
+Submitting
+ProviderQueued
+Generating
+Downloading
+Validating
+Completed
+Paused
+WaitingForQuota
+WaitingForProvider
+WaitingForDependency
+RetryScheduled
+Rejected
+FailedRetryable
+FailedPermanent
+Cancelled
+```
 
-Scene edit saves create a new storyboard version and a new prompt version only for the edited scene. Scene reorder keeps the existing ordered timing slots and moves scene content into those slots so timing stays contiguous/non-overlapping. Prompt-only regeneration creates a new prompt/storyboard version but never dispatches an image/video generation job.
+Jobs persist:
 
-Structured Director output is validated before persistence: Visual Arc points must be valid and ordered; scenes must contain structured creative details; scene timing must cover the complete song without gaps/overlaps; and referenced Character/Style/Location IDs must already be attached to the project.
+- definition/payload
+- project/scene/parent IDs
+- provider/model
+- dependencies
+- attempts/retries
+- scheduling
+- provider task ID
+- errors
+- estimated/actual cost
+- claim/lease metadata
 
-## Infrastructure
+Generation-specific dispatch is composed as a chain:
 
-### DuckDB
+```text
+VideoGenerationJobExecutionDispatcher
+  └─ non-video → GenerationJobExecutionDispatcher
+                     └─ non-keyframe → MockJobExecutionDispatcher
+```
 
-DuckDB is authoritative for structured metadata. Current schema version is **5**.
+This lets new generation job types share one worker/state machine rather than create parallel queue systems.
+
+Provider task IDs returned by an adapter are carried in `JobExecutionResult` and persisted by `JobService`. Startup recovery therefore reuses the existing known-provider-task reconciliation path instead of blindly resubmitting remote work.
+
+## Infrastructure persistence
+
+DuckDB remains authoritative for core structured metadata/jobs. Large media bytes remain filesystem data.
+
+Current core tables include:
 
 ```text
 schema_migrations
@@ -209,29 +228,19 @@ visual_library_items
 project_character_states
 ```
 
-Schema evolution:
+Versioned JSON stored through `IProjectSettingsRepository` currently covers:
 
-- v1 — project/settings/media foundation
-- v2 — persistent jobs/dependencies/attempts
-- v3 — versioned song analyses
-- v4 — vocal estimate + lyric timing versions
-- v5 — global visual/asset libraries + project Character state
+- Visual Arc/storyboard/prompt histories
+- keyframe variants
+- keyframe approvals/settings
+- clip variants
+- video-generation settings
 
-Searchable library fields (kind/name/favorite) are first-class columns. Tags, typed detail payloads, asset-ID lists, continuity locks, and state maps are version-tolerant JSON columns.
+These are behind application repository interfaces, so moving them to dedicated tables later does not change domain/application consumers.
 
-Block 8 planning history does not need an additional table migration. `DuckDbPlanningRepository` persists versioned Visual Arc, storyboard, and prompt-history JSON through `IProjectSettingsRepository` under separate versioned keys. This retains durable restart behavior while keeping the planning repository behind application ports.
+## Media storage
 
-Large audio/image/video bytes never live in DuckDB.
-
-### Structured mock Director
-
-`StructuredMockDirectorProvider` is the offline Block 8 planning implementation. It derives a target scene count from song duration, prefers nearby section/phrase anchors with a pacing-relative snap tolerance, and enforces a hard minimum interval to avoid micro-scenes.
-
-It emits structured scene data rather than only a final prose prompt. The application layer validates that output and performs prompt expansion using the current versioned template.
-
-### Media storage
-
-`LocalMediaPathResolver` is the single root/path-traversal policy used by project storage, global library storage, ffprobe, and FFmpeg adapters.
+`LocalMediaPathResolver` centralizes root/path safety.
 
 ```text
 projectsRoot/
@@ -248,118 +257,95 @@ projectsRoot/
     renders/
 ```
 
-Global visual library media has `project_id = NULL` in `media_assets`; project media keeps its project association.
+Generated keyframes are stored in `keyframes/`; animated clips are stored in `generated/`. Both receive `MediaAssetMetadata` with `MediaCreationSource.Generated`.
 
-### FFmpeg / ffprobe
+Preview endpoints reopen media via `IMediaStorage` and are range-enabled for normal browser image/video usage.
 
-All process execution uses `ProcessStartInfo.ArgumentList`; no shell command string is assembled from user input.
+## Provider abstractions
 
-Implemented uses:
+Provider capability descriptors remain the decision boundary. Current mock providers cover Director, image generation/editing, video generation, image-to-video, and video-to-video without requiring paid credentials.
 
-- ffprobe: authoritative audio metadata
-- FFmpeg: streaming PCM for waveform/energy/rhythm analysis
-- FFmpeg: first-frame/visual PNG preview generation with bounded output size
+Credential settings persist references, never resolved plaintext secrets.
 
-The preview adapter resolves the source through the same safe media root and writes its result through `ILibraryMediaStorage`.
+`ImageGenerationProviderResolver` and `ImageToVideoProviderResolver` are infrastructure mappings from provider IDs to concrete adapters. Application coordinators only depend on provider capability/contracts.
 
-## API
+Real image/video provider adapters remain open PLAN items until mock validation is proven.
 
-Implemented product APIs now include:
+## API surface
+
+Implemented groups include:
 
 ```text
 /api/projects/...
 /api/projects/{id}/song
 /api/projects/{projectId}/analysis/...
-/api/projects/{projectId}/analysis/lyrics/timing...
-/api/library/items...
-/api/library/assets...
-/api/projects/{projectId}/characters/states...
+/api/library/...
 /api/projects/{projectId}/director/...
+/api/projects/{projectId}/scenes/{sceneId}/keyframes/...
+/api/projects/{projectId}/scenes/{sceneId}/clips/...
 /api/providers/...
 /api/jobs/...
+/api/jobs/events
 ```
 
-Director routes expose planning, Visual Arc/current+history, storyboard/current+history, scene editing/reordering, and prompt history/regeneration.
+Keyframe/clip generation endpoints return after durable enqueueing; provider execution happens in the worker.
 
-Library deletion conflicts return referencing project/library IDs so the UI can explain why deletion is blocked instead of silently detaching references.
+## Frontend architecture
 
-Public enums serialize as readable strings. The committed frontend OpenAPI snapshot remains the TypeScript contract source.
-
-## Frontend
-
-Feature-oriented structure:
+Feature-oriented structure now includes:
 
 ```text
 src/features/projects/
-  ProjectStudio.tsx
-  ProjectSidebar.tsx
-  ProjectForm.tsx
-  projectModel.ts
-
 src/features/analysis/
-  SongAnalysisPanel.tsx
-
 src/features/library/
-  VisualLibraryPanel.tsx
-  VisualReferenceSelector.tsx
-  ProjectCharacterContinuity.tsx
-
 src/features/planning/
-  DirectorStoryboardPanel.tsx
-  SceneReferenceEditor.tsx
+src/features/generation/
+  KeyframeWorkspace.tsx
+  VideoGenerationWorkspace.tsx
+  GenerationQueuePanel.tsx
 ```
 
-### Project references
+### Progressive disclosure
 
-`VisualReferenceSelector` edits only `{ kind, referenceId }` project references. It does not copy appearance/style/location payloads into project state and preserves unrelated references such as Song.
+Simple Mode uses automatic capability routing and hides provider/model/seed/raw-provider details. Advanced/Custom expose only generation controls supported by the selected model. Custom additionally controls fallback policy.
 
-### Library workspace
+### Generation Queue
 
-`VisualLibraryPanel` provides:
+`GenerationQueuePanel` performs an initial persisted `GET /api/jobs/` read, then subscribes to `/api/jobs/events` with browser `EventSource`.
 
-- Character/Style/Location create/edit/delete
-- search/type filtering
-- favorites
-- global asset upload
-- source metadata
-- generated previews
-- reference-aware conflict messages
+SSE events are notifications, not state storage. On SSE `ready`/reconnect, the frontend reloads persisted jobs. There is no per-scene job polling loop for the global queue.
 
-### Character continuity
+Queue actions call the same persisted job APIs used elsewhere: pause/resume/retry/restart/cancel plus project/scene scope operations.
 
-`ProjectCharacterContinuity` edits project-specific outfit, continuity locks, and normalized initial state values separately from the reusable global Character definition.
+## FFmpeg / ffprobe boundary
 
-### Director workspace
+All current process execution uses typed `ProcessStartInfo.ArgumentList` rather than shell-assembled user input.
 
-`DirectorStoryboardPanel` exposes all normalized Director controls, an editable Visual Arc, storyboard cards, and a detailed selected-scene inspector. The inspector edits structured creative scene fields plus Character/Style/Location references through `SceneReferenceEditor`.
+Implemented uses:
 
-Prompt history visibly separates Director Intent from Final Provider Prompt and identifies template versions. The prompt-only action calls only the planning endpoint; job/image/video generation stays a later explicit workflow.
+- ffprobe authoritative audio metadata
+- FFmpeg streaming waveform/energy/rhythm analysis
+- FFmpeg bounded image/video preview generation for the asset library
 
-Simple Mode still hides provider IDs, model IDs, seeds, and raw provider JSON.
+Block 11 will extend this deterministic boundary to clip assembly, preview rendering, and final output.
 
-## Persistent jobs
+## Data-loss/security boundaries
 
-Generation job state remains persisted in DuckDB. Normal resume does not regenerate completed work. Known provider task IDs survive restart and move into reconciliation instead of blind re-submission. SSE broadcasts are notifications only; persisted jobs are authoritative.
-
-Block 9 groundwork already models keyframe variants with immutable `PromptVersionId` provenance. It remains unfinished as a PLAN block until the full capability-routing/generation/UI/approval flow is implemented.
-
-## Security / data-loss boundaries
-
-- credentials are references, never plaintext project/DuckDB/export data
-- project and global library filenames are validated as safe leaf names
-- resolved media paths cannot escape the configured root
-- FFmpeg/ffprobe receive typed argument lists rather than shell strings
-- upload size/MIME/extension validation happens before accepted media becomes a library/project reference
-- project/library metadata deletion does not silently destroy underlying user media
-- successful/generated variants remain non-destructive
-- referenced Character/Style/Location/Asset entries cannot be silently deleted
-- Director edits create new versions rather than overwriting prior Visual Arc/storyboard/prompt history
-- scene/prompt edits preserve exact song-analysis and Visual-Arc provenance
+- secrets are credential references, not plaintext project/DuckDB/export data
+- resolved media paths cannot escape configured roots
+- user file names are validated
+- FFmpeg/ffprobe receive typed arguments
+- successful generated keyframes/clips are non-destructive variants
+- selected variants cannot be silently deleted
+- referenced reusable library items/assets are protected
+- planning edits create immutable versions rather than overwriting provenance
+- animation cannot proceed until the current keyframe selection is explicitly approved
+- fallback candidates cannot silently change resolved generation dimensions
 
 ## Tests and deferred execution
 
-Repository-side test code covers architecture, persistence, providers, jobs, project/song behavior, analysis/versioning/rhythm/lyrics, visual-library invariants, and Director planning invariants including music-aware scene pacing, structured scene details, planning-history persistence, and scene timing validation.
+Repository-side tests now cover architecture/persistence/providers/jobs, project/song/analysis/library/planning invariants, keyframe generation, clip generation, non-destructive variants, and video-provider fallback policy. Frontend source tests cover mounted keyframe/video/queue workflows and SSE usage.
 
-Source-presence tests protect the typed frontend contract and key Simple/Analysis/Library/Director UI invariants, including the planning client operations and actual wiring of the scene reference editor.
+These tests are **not considered passed until executed**. `TESTPLAN.md` is the authoritative validation matrix for build/lint/typecheck/unit/integration/browser/restart/fault-injection proof.
 
-These tests are **not considered passed until executed**. `TESTPLAN.md` contains the local Codex validation matrix and is the sole tracker for still-unexecuted build/lint/typecheck/test/FFmpeg/browser/manual proof.
+See `docs/BLOCK9_KEYFRAME_GENERATION.md` and `docs/BLOCK10_VIDEO_GENERATION.md` for focused generation-flow documentation.
