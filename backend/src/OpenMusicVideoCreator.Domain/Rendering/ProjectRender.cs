@@ -1,3 +1,5 @@
+using OpenMusicVideoCreator.Domain.Timeline;
+
 namespace OpenMusicVideoCreator.Domain.Rendering;
 
 public enum ProjectRenderKind
@@ -23,15 +25,37 @@ public sealed record RenderTimelineClip(
     Guid MediaAssetId,
     double TimelineStartSeconds,
     double DurationSeconds,
-    string TransitionIn)
+    string TransitionIn,
+    double SourceInSeconds = 0,
+    double? SourceDurationSeconds = null,
+    double PlaybackRate = 1,
+    double FreezeExtensionSeconds = 0,
+    TimelineClipTransform? Transform = null,
+    TimelineColorAdjustment? Color = null,
+    TimelineTransitionKind? TransitionKind = null,
+    double TransitionDurationSeconds = 0)
 {
+    public TimelineClipTransform ResolveTransform() => Transform ?? TimelineClipTransform.Default;
+    public TimelineColorAdjustment ResolveColor() => Color ?? TimelineColorAdjustment.Neutral;
+
     public void Validate()
     {
         if (SceneId == Guid.Empty || ClipVariantId == Guid.Empty || MediaAssetId == Guid.Empty || Sequence <= 0 ||
             !double.IsFinite(TimelineStartSeconds) || TimelineStartSeconds < 0 ||
-            !double.IsFinite(DurationSeconds) || DurationSeconds <= 0)
+            !double.IsFinite(DurationSeconds) || DurationSeconds <= 0 ||
+            !double.IsFinite(SourceInSeconds) || SourceInSeconds < 0 ||
+            SourceDurationSeconds is double sourceDuration && (!double.IsFinite(sourceDuration) || sourceDuration <= 0) ||
+            !double.IsFinite(PlaybackRate) || PlaybackRate is < 0.5 or > 2 ||
+            !double.IsFinite(FreezeExtensionSeconds) || FreezeExtensionSeconds < 0 ||
+            !double.IsFinite(TransitionDurationSeconds) || TransitionDurationSeconds < 0 || TransitionDurationSeconds > Math.Min(2, DurationSeconds / 2))
         {
-            throw new ArgumentException("Render timeline clip contains invalid identity or timing data.");
+            throw new ArgumentException("Render timeline clip contains invalid identity, timing, or edit data.");
+        }
+        ResolveTransform().Validate();
+        ResolveColor().Validate();
+        if ((TransitionKind ?? TimelineTransitionKind.Cut) == TimelineTransitionKind.Cut && TransitionDurationSeconds > 0.0001)
+        {
+            throw new ArgumentException("Cut render transitions cannot have a duration.");
         }
     }
 }
@@ -46,8 +70,14 @@ public sealed record ProjectRenderManifest(
     int FramesPerSecond,
     IReadOnlyList<RenderTimelineClip> Clips,
     double DurationSeconds,
-    string TimelineSha256)
+    string TimelineSha256,
+    Guid? TimelineVersionId = null,
+    IReadOnlyList<TimelineOverlay>? Overlays = null,
+    IReadOnlyList<TimelineEffect>? Effects = null)
 {
+    public IReadOnlyList<TimelineOverlay> ResolveOverlays() => Overlays ?? [];
+    public IReadOnlyList<TimelineEffect> ResolveEffects() => Effects ?? [];
+
     public void Validate()
     {
         if (ProjectId == Guid.Empty || StoryboardVersionId == Guid.Empty || SongMediaAssetId == Guid.Empty ||
@@ -88,6 +118,9 @@ public sealed record ProjectRenderManifest(
         {
             throw new ArgumentException("Render duration must match the final timeline boundary.");
         }
+
+        foreach (var overlay in ResolveOverlays()) overlay.Validate(DurationSeconds);
+        foreach (var effect in ResolveEffects()) effect.Validate(DurationSeconds);
     }
 }
 
