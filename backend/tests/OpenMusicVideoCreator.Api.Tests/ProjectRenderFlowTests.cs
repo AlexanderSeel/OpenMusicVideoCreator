@@ -19,69 +19,88 @@ public sealed class ProjectRenderFlowTests
     [Fact]
     public async Task PreviewAndFinal_UseSameSelectedTimelineAndOriginalSongProvenance()
     {
-        var projectId = Guid.NewGuid();
-        var songId = Guid.NewGuid();
-        var firstSceneId = Guid.NewGuid();
-        var secondSceneId = Guid.NewGuid();
-        var firstMediaId = Guid.NewGuid();
-        var secondMediaId = Guid.NewGuid();
-        var firstJobId = Guid.NewGuid();
-        var secondJobId = Guid.NewGuid();
-        var storyboardId = Guid.NewGuid();
-        var project = new MusicVideoProject(
-            projectId, "Render fixture", "Artist", "", "", "", "", "", "",
-            ProjectAspectRatio.Landscape16x9, new OutputResolution(1920, 1080), [], GenerationPreset.Balanced,
-            null, null, [new ProjectReference(ProjectReferenceKind.Song, songId)], FixedUtc(), FixedUtc());
-        var storyboard = new StoryboardVersion(
-            storyboardId, projectId, Guid.NewGuid(), Guid.NewGuid(), 3,
-            [
-                Scene(firstSceneId, 1, 0, 4.25, "Cut"),
-                Scene(secondSceneId, 2, 4.25, 10, "Crossfade"),
-            ], FixedUtc());
-        var clips = new InMemoryClipRepository(
-            CompletedClip(projectId, firstSceneId, 1, firstMediaId, firstJobId),
-            CompletedClip(projectId, secondSceneId, 1, secondMediaId, secondJobId));
-        var media = new InMemoryMediaRepository(
-            Asset(songId, projectId, "source/song original.flac", "audio/flac"),
-            Asset(firstMediaId, projectId, "generated/scene 1.mp4", "video/mp4"),
-            Asset(secondMediaId, projectId, "generated/scene 2.mp4", "video/mp4"));
-        var renders = new InMemoryRenderRepository();
-        var jobs = new CapturingJobQueue();
-        var service = new ProjectRenderService(
-            new InMemoryProjectRepository(project),
-            new InMemoryStoryboardRepository(storyboard),
-            clips,
-            media,
-            renders,
-            jobs,
-            new FixedTimeProvider());
+        var fixture = CreateFixture();
 
-        var preview = await service.QueueAsync(projectId, ProjectRenderKind.Preview);
-        var final = await service.QueueAsync(projectId, ProjectRenderKind.Final);
+        var preview = await fixture.Service.QueueAsync(fixture.ProjectId, ProjectRenderKind.Preview);
+        var final = await fixture.Service.QueueAsync(fixture.ProjectId, ProjectRenderKind.Final);
 
-        Assert.Equal(songId, preview.Manifest.SongMediaAssetId);
-        Assert.Equal(songId, final.Manifest.SongMediaAssetId);
-        Assert.Equal(storyboardId, preview.Manifest.StoryboardVersionId);
+        Assert.Equal(fixture.SongId, preview.Manifest.SongMediaAssetId);
+        Assert.Equal(fixture.SongId, final.Manifest.SongMediaAssetId);
+        Assert.Equal(fixture.StoryboardId, preview.Manifest.StoryboardVersionId);
         Assert.Equal(preview.Manifest.TimelineSha256, final.Manifest.TimelineSha256);
-        Assert.Equal([firstSceneId, secondSceneId], preview.Manifest.Clips.Select(item => item.SceneId).ToArray());
-        Assert.Equal([firstMediaId, secondMediaId], preview.Manifest.Clips.Select(item => item.MediaAssetId).ToArray());
+        Assert.Equal(fixture.SceneIds, preview.Manifest.Clips.Select(item => item.SceneId).ToArray());
+        Assert.Equal(fixture.ClipMediaIds, preview.Manifest.Clips.Select(item => item.MediaAssetId).ToArray());
         Assert.Equal(10, preview.Manifest.DurationSeconds, 3);
         Assert.True(preview.Manifest.Width < final.Manifest.Width);
         Assert.True(preview.Manifest.Height < final.Manifest.Height);
         Assert.Equal((1920, 1080), (final.Manifest.Width, final.Manifest.Height));
-        Assert.All(jobs.Dependencies, dependencySet => Assert.Equal([firstJobId, secondJobId], dependencySet));
-        Assert.All(jobs.Definitions, definition => Assert.Equal(ProjectRenderService.JobType, definition.Type));
+
+        foreach (var render in new[] { preview, final })
+        {
+            Assert.NotNull(render.JobId);
+            Assert.Equal(fixture.DependencyJobIds, await fixture.JobService.GetDependenciesAsync(render.JobId!.Value));
+            var job = await fixture.JobService.GetAsync(render.JobId.Value);
+            Assert.NotNull(job);
+            Assert.Equal(ProjectRenderService.JobType, job!.Type);
+        }
     }
 
     [Fact]
-    public void FfmpegArguments_KeepPathsAtomicAndMapOnlyOriginalSongAudio()
+    public async Task RenderAttempts_RemainNonDestructiveAcrossRetryAndCompletion()
+    {
+        var fixture = CreateFixture();
+        var render = await fixture.Service.QueueAsync(fixture.ProjectId, ProjectRenderKind.Final);
+
+        render = await fixture.Service.MarkRenderingAsync(fixture.ProjectId, render.Id);
+        render = await fixture.Service.MarkRetryPendingAsync(fixture.ProjectId, render.Id, "transient ffmpeg failure", "ffmpeg attempt-1");
+
+        Assert.Equal(ProjectRenderState.Queued, render.State);
+        var firstAttempt = Assert.Single(render.ResolveAttempts());
+        Assert.Equal(ProjectRenderState.Failed, firstAttempt.State);
+        Assert.NotNull(firstAttempt.CompletedUtc);
+        Assert.Equal("transient ffmpeg failure", firstAttempt.ErrorMessage);
+        Assert.Equal("ffmpeg attempt-1", firstAttempt.CommandLog);
+
+        render = await fixture.Service.MarkRenderingAsync(fixture.ProjectId, render.Id);
+        var outputMediaId = Guid.NewGuid();
+        render = await fixture.Service.CompleteAsync(fixture.ProjectId, render.Id, outputMediaId, "ffmpeg attempt-2");
+
+        Assert.Equal(ProjectRenderState.Completed, render.State);
+        Assert.Equal(outputMediaId, render.OutputMediaAssetId);
+        Assert.Equal(2, render.ResolveAttempts().Count);
+        Assert.Equal(ProjectRenderState.Completed, render.ResolveAttempts()[1].State);
+        Assert.Equal("ffmpeg attempt-2", render.ResolveAttempts()[1].CommandLog);
+        Assert.Equal("ffmpeg attempt-2", render.CommandLog);
+    }
+
+    [Fact]
+    public async Task CancelAndRetry_ReuseSameRenderManifestAndPersistedJob()
+    {
+        var fixture = CreateFixture();
+        var render = await fixture.Service.QueueAsync(fixture.ProjectId, ProjectRenderKind.Preview);
+        var jobId = Assert.IsType<Guid>(render.JobId);
+        var timelineHash = render.Manifest.TimelineSha256;
+
+        render = await fixture.Service.CancelAsync(fixture.ProjectId, render.Id);
+        Assert.Equal(ProjectRenderState.Cancelled, render.State);
+        Assert.Equal(JobState.Cancelled, (await fixture.JobService.GetAsync(jobId))!.State);
+
+        render = await fixture.Service.RetryAsync(fixture.ProjectId, render.Id);
+        Assert.Equal(ProjectRenderState.Queued, render.State);
+        Assert.Equal(jobId, render.JobId);
+        Assert.Equal(timelineHash, render.Manifest.TimelineSha256);
+        Assert.Equal(JobState.Queued, (await fixture.JobService.GetAsync(jobId))!.State);
+    }
+
+    [Fact]
+    public void FfmpegArguments_KeepPathsAtomicMapOnlyOriginalSongAudioAndHonorFade()
     {
         var manifest = new ProjectRenderManifest(
             Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), ProjectRenderKind.Final,
             1920, 1080, 30,
             [
                 new RenderTimelineClip(Guid.NewGuid(), 1, Guid.NewGuid(), Guid.NewGuid(), 0, 3.5, "Cut"),
-                new RenderTimelineClip(Guid.NewGuid(), 2, Guid.NewGuid(), Guid.NewGuid(), 3.5, 4.5, "Cut"),
+                new RenderTimelineClip(Guid.NewGuid(), 2, Guid.NewGuid(), Guid.NewGuid(), 3.5, 4.5, "Fade"),
             ],
             8,
             new string('a', 64));
@@ -102,6 +121,63 @@ public sealed class ProjectRenderFlowTests
         Assert.Equal(["[outv]", "2:a:0"], maps);
         Assert.Equal("libx264", arguments[Array.IndexOf(arguments, "-c:v") + 1]);
         Assert.Equal("aac", arguments[Array.IndexOf(arguments, "-c:a") + 1]);
+        var filter = arguments[Array.IndexOf(arguments, "-filter_complex") + 1];
+        Assert.Contains("tpad=stop_mode=clone", filter);
+        Assert.Contains("fade=t=in", filter);
+    }
+
+    private static RenderFixture CreateFixture()
+    {
+        var projectId = Guid.NewGuid();
+        var songId = Guid.NewGuid();
+        var firstSceneId = Guid.NewGuid();
+        var secondSceneId = Guid.NewGuid();
+        var firstMediaId = Guid.NewGuid();
+        var secondMediaId = Guid.NewGuid();
+        var firstJobId = Guid.NewGuid();
+        var secondJobId = Guid.NewGuid();
+        var storyboardId = Guid.NewGuid();
+        var project = new MusicVideoProject(
+            projectId, "Render fixture", "Artist", "", "", "", "", "", "",
+            ProjectAspectRatio.Landscape16x9, new OutputResolution(1920, 1080), [], GenerationPreset.Balanced,
+            null, null, [new ProjectReference(ProjectReferenceKind.Song, songId)], FixedUtc(), FixedUtc());
+        var storyboard = new StoryboardVersion(
+            storyboardId, projectId, Guid.NewGuid(), Guid.NewGuid(), 3,
+            [
+                Scene(firstSceneId, 1, 0, 4.25, "Cut"),
+                Scene(secondSceneId, 2, 4.25, 10, "Fade"),
+            ], FixedUtc());
+        var clips = new InMemoryClipRepository(
+            CompletedClip(projectId, firstSceneId, 1, firstMediaId, firstJobId),
+            CompletedClip(projectId, secondSceneId, 1, secondMediaId, secondJobId));
+        var media = new InMemoryMediaRepository(
+            Asset(songId, projectId, "source/song original.flac", "audio/flac"),
+            Asset(firstMediaId, projectId, "generated/scene 1.mp4", "video/mp4"),
+            Asset(secondMediaId, projectId, "generated/scene 2.mp4", "video/mp4"));
+        var renderRepository = new InMemoryRenderRepository();
+        var jobRepository = new InMemoryJobRepository(
+            DependencyJob(firstJobId, projectId),
+            DependencyJob(secondJobId, projectId));
+        var jobService = new JobService(jobRepository, new NoopJobChangePublisher(), new FixedTimeProvider());
+        var service = new ProjectRenderService(
+            new InMemoryProjectRepository(project),
+            new InMemoryStoryboardRepository(storyboard),
+            clips,
+            media,
+            renderRepository,
+            jobService,
+            jobService,
+            new FixedTimeProvider());
+
+        return new RenderFixture(
+            projectId,
+            songId,
+            storyboardId,
+            [firstSceneId, secondSceneId],
+            [firstMediaId, secondMediaId],
+            [firstJobId, secondJobId],
+            service,
+            jobService);
     }
 
     private static StoryboardScene Scene(Guid id, int sequence, double start, double end, string transition) =>
@@ -115,11 +191,30 @@ public sealed class ProjectRenderFlowTests
     private static MediaAssetMetadata Asset(Guid id, Guid projectId, string location, string mimeType) =>
         new(id, projectId, location, new string('b', 64), mimeType, null, null, null, 100, MediaCreationSource.Generated, FixedUtc());
 
+    private static GenerationJob DependencyJob(Guid id, Guid projectId) =>
+        new(id, projectId, null, null, "fixture", "{}", null, null, JobState.Completed, null, 100, 1, 0, 0,
+            FixedUtc(), FixedUtc(), null, FixedUtc(), FixedUtc(), null, null, null, 0m, 0m, "USD", null, null);
+
     private static DateTimeOffset FixedUtc() => new(2026, 8, 10, 13, 30, 0, TimeSpan.Zero);
+
+    private sealed record RenderFixture(
+        Guid ProjectId,
+        Guid SongId,
+        Guid StoryboardId,
+        Guid[] SceneIds,
+        Guid[] ClipMediaIds,
+        Guid[] DependencyJobIds,
+        ProjectRenderService Service,
+        JobService JobService);
 
     private sealed class FixedTimeProvider : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => FixedUtc();
+    }
+
+    private sealed class NoopJobChangePublisher : IJobChangePublisher
+    {
+        public ValueTask PublishAsync(Guid jobId, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
     private sealed class InMemoryProjectRepository(MusicVideoProject project) : IProjectRepository
@@ -163,21 +258,37 @@ public sealed class ProjectRenderFlowTests
         public Task UpsertAsync(ProjectRenderRecord render, CancellationToken cancellationToken = default) { _items[render.Id] = render; return Task.CompletedTask; }
     }
 
-    private sealed class CapturingJobQueue : IJobQueue
+    private sealed class InMemoryJobRepository(params GenerationJob[] jobs) : IJobRepository
     {
-        public List<JobDefinition> Definitions { get; } = [];
-        public List<IReadOnlyList<Guid>> Dependencies { get; } = [];
+        private readonly Dictionary<Guid, GenerationJob> _jobs = jobs.ToDictionary(job => job.Id);
+        private readonly Dictionary<Guid, IReadOnlyList<Guid>> _dependencies = [];
+        private readonly Dictionary<(Guid JobId, int Attempt), JobAttempt> _attempts = [];
 
-        public Task<GenerationJob> EnqueueAsync(JobDefinition definition, IReadOnlyCollection<Guid>? dependencyIds = null, CancellationToken cancellationToken = default)
+        public Task CreateAsync(GenerationJob job, IReadOnlyCollection<Guid> dependencyIds, CancellationToken cancellationToken = default)
         {
-            Definitions.Add(definition);
-            Dependencies.Add((dependencyIds ?? []).ToArray());
-            var now = FixedUtc();
-            return Task.FromResult(new GenerationJob(
-                Guid.NewGuid(), definition.ProjectId, definition.SceneId, definition.ParentJobId, definition.Type,
-                definition.PayloadJson, definition.ProviderId, definition.ModelId, JobState.Queued, null,
-                definition.Priority, 0, 0, definition.MaxRetries, now, now, null, null, null, null, null, null,
-                definition.EstimatedCost, null, definition.Currency, null, null));
+            _jobs[job.Id] = job;
+            _dependencies[job.Id] = dependencyIds.ToArray();
+            return Task.CompletedTask;
+        }
+
+        public Task<GenerationJob?> GetAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_jobs.GetValueOrDefault(id));
+        public Task<IReadOnlyList<GenerationJob>> ListAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<GenerationJob>>(_jobs.Values.ToArray());
+        public Task<IReadOnlyList<Guid>> GetDependenciesAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(_dependencies.GetValueOrDefault(jobId) ?? (IReadOnlyList<Guid>)[]);
+        public Task<IReadOnlyList<JobAttempt>> GetAttemptsAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<JobAttempt>>(_attempts.Values.Where(attempt => attempt.JobId == jobId).OrderBy(attempt => attempt.AttemptNumber).ToArray());
+
+        public Task<bool> TryUpdateAsync(GenerationJob job, JobState expectedState, CancellationToken cancellationToken = default)
+        {
+            if (!_jobs.TryGetValue(job.Id, out var current) || current.State != expectedState) return Task.FromResult(false);
+            _jobs[job.Id] = job;
+            return Task.FromResult(true);
+        }
+
+        public Task<GenerationJob?> TryClaimNextAsync(string workerId, DateTimeOffset now, TimeSpan leaseDuration, CancellationToken cancellationToken = default) => Task.FromResult<GenerationJob?>(null);
+
+        public Task UpsertAttemptAsync(JobAttempt attempt, CancellationToken cancellationToken = default)
+        {
+            _attempts[(attempt.JobId, attempt.AttemptNumber)] = attempt;
+            return Task.CompletedTask;
         }
     }
 }
