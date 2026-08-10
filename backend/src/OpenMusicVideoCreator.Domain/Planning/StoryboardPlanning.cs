@@ -134,7 +134,7 @@ public sealed record StoryboardScene(
     StoryboardSceneDetails? Details = null)
 {
     public double DurationSeconds => EndSeconds - StartSeconds;
-    public StoryboardSceneDetails EffectiveDetails => Details ?? StoryboardSceneDetails.Empty;
+    public StoryboardSceneDetails ResolveDetails() => Details ?? StoryboardSceneDetails.Empty;
 }
 
 public sealed record StoryboardVersion(
