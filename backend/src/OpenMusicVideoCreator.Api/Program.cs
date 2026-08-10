@@ -14,6 +14,7 @@ using OpenMusicVideoCreator.Application.Projects;
 using OpenMusicVideoCreator.Application.Providers;
 using OpenMusicVideoCreator.Application.Rendering;
 using OpenMusicVideoCreator.Application.SystemInfo;
+using OpenMusicVideoCreator.Application.Timeline;
 using OpenMusicVideoCreator.Infrastructure.Generation;
 using OpenMusicVideoCreator.Infrastructure.Jobs;
 using OpenMusicVideoCreator.Infrastructure.Media;
@@ -21,6 +22,7 @@ using OpenMusicVideoCreator.Infrastructure.Persistence;
 using OpenMusicVideoCreator.Infrastructure.Planning;
 using OpenMusicVideoCreator.Infrastructure.Providers;
 using OpenMusicVideoCreator.Infrastructure.Rendering;
+using OpenMusicVideoCreator.Infrastructure.Timeline;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -136,6 +138,9 @@ builder.Services.AddSingleton<IImageToVideoProviderResolver, ImageToVideoProvide
 builder.Services.AddSingleton<ClipVariantService>();
 builder.Services.AddSingleton<VideoGenerationCoordinator>();
 
+builder.Services.AddSingleton<IProjectTimelineRepository, DuckDbProjectTimelineRepository>();
+builder.Services.AddSingleton<TimelineEditorService>();
+
 builder.Services.AddSingleton<IProjectRenderRepository, DuckDbProjectRenderRepository>();
 builder.Services.AddSingleton<IProjectRenderEngine, FfmpegProjectRenderEngine>();
 builder.Services.AddSingleton<ProjectRenderService>();
@@ -190,6 +195,7 @@ app.MapLibraryEndpoints();
 app.MapPlanningEndpoints();
 app.MapKeyframeEndpoints();
 app.MapClipEndpoints();
+app.MapTimelineEndpoints();
 app.MapRenderEndpoints();
 app.MapProviderEndpoints();
 app.MapJobEndpoints();
