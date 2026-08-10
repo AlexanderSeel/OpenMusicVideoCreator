@@ -64,7 +64,7 @@ public sealed class GenerationJobExecutionDispatcher : IJobExecutionDispatcher
         if (job.ProjectId is not Guid projectId || job.SceneId is not Guid sceneId ||
             string.IsNullOrWhiteSpace(job.ProviderId) || string.IsNullOrWhiteSpace(job.ModelId))
         {
-            await TryMarkFailedAsync(job.ProjectId, payload.VariantId, cancellationToken);
+            await TryMarkStateAsync(job.ProjectId, payload.VariantId, GenerationVariantState.Failed, cancellationToken);
             return JobExecutionResult.Failed(new ProviderFailure(
                 ProviderFailureCode.InvalidParameters,
                 "Keyframe generation job requires project, scene, provider, and model identifiers.",
@@ -112,7 +112,7 @@ public sealed class GenerationJobExecutionDispatcher : IJobExecutionDispatcher
         }
         catch (Exception exception)
         {
-            await _variants.MarkStateAsync(projectId, variant.Id, GenerationVariantState.Failed, cancellationToken);
+            await _variants.MarkStateAsync(projectId, variant.Id, GenerationVariantState.Queued, cancellationToken);
             return JobExecutionResult.Failed(new ProviderFailure(
                 ProviderFailureCode.TransientFailure,
                 $"Image provider execution failed: {exception.Message}",
@@ -121,11 +121,12 @@ public sealed class GenerationJobExecutionDispatcher : IJobExecutionDispatcher
 
         if (!providerResult.IsSuccess || providerResult.Value is null)
         {
-            await _variants.MarkStateAsync(projectId, variant.Id, GenerationVariantState.Failed, cancellationToken);
-            return JobExecutionResult.Failed(providerResult.Failure ?? new ProviderFailure(
+            var failure = providerResult.Failure ?? new ProviderFailure(
                 ProviderFailureCode.PermanentFailure,
                 "Image provider returned no asset.",
-                Retryable: false));
+                Retryable: false);
+            await _variants.MarkStateAsync(projectId, variant.Id, VariantStateForFailure(failure), cancellationToken);
+            return JobExecutionResult.Failed(failure);
         }
 
         try
@@ -166,7 +167,7 @@ public sealed class GenerationJobExecutionDispatcher : IJobExecutionDispatcher
         }
         catch (Exception exception)
         {
-            await _variants.MarkStateAsync(projectId, variant.Id, GenerationVariantState.Failed, cancellationToken);
+            await _variants.MarkStateAsync(projectId, variant.Id, GenerationVariantState.Queued, cancellationToken);
             return JobExecutionResult.Failed(new ProviderFailure(
                 ProviderFailureCode.TransientFailure,
                 $"Generated keyframe could not be persisted: {exception.Message}",
@@ -222,17 +223,29 @@ public sealed class GenerationJobExecutionDispatcher : IJobExecutionDispatcher
         throw new InvalidDataException("Generated provider asset URI uses an unsupported scheme.");
     }
 
-    private async Task TryMarkFailedAsync(Guid? projectId, Guid variantId, CancellationToken cancellationToken)
+    private async Task TryMarkStateAsync(Guid? projectId, Guid variantId, GenerationVariantState state, CancellationToken cancellationToken)
     {
         if (projectId is not Guid id) return;
         try
         {
-            await _variants.MarkStateAsync(id, variantId, GenerationVariantState.Failed, cancellationToken);
+            await _variants.MarkStateAsync(id, variantId, state, cancellationToken);
         }
         catch (KeyNotFoundException)
         {
         }
     }
+
+    private static GenerationVariantState VariantStateForFailure(ProviderFailure failure) =>
+        failure.Retryable || failure.Code is
+            ProviderFailureCode.RateLimited or
+            ProviderFailureCode.ProviderUnavailable or
+            ProviderFailureCode.QuotaExhausted or
+            ProviderFailureCode.InsufficientCredits or
+            ProviderFailureCode.NetworkFailure or
+            ProviderFailureCode.Timeout or
+            ProviderFailureCode.TransientFailure
+                ? GenerationVariantState.Queued
+                : GenerationVariantState.Failed;
 
     private static string ExtensionFor(string mimeType) => mimeType.ToLowerInvariant() switch
     {
