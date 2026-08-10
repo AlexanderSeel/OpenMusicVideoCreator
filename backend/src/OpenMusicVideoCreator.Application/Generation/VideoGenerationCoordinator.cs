@@ -22,6 +22,8 @@ public interface IImageToVideoProviderResolver
     IImageToVideoProvider Resolve(string providerId);
 }
 
+public sealed record VideoProviderCandidate(string ProviderId, string ModelId);
+
 public sealed record SceneVideoGenerationJobPayload(
     Guid VariantId,
     Guid PromptVersionId,
@@ -33,7 +35,8 @@ public sealed record SceneVideoGenerationJobPayload(
     double DurationSeconds,
     string AspectRatio,
     string Resolution,
-    bool AllowFallback);
+    bool AllowFallback,
+    IReadOnlyList<VideoProviderCandidate> Fallbacks);
 
 public sealed class VideoGenerationCoordinator
 {
@@ -103,7 +106,7 @@ public sealed class VideoGenerationCoordinator
         var (project, scene) = await RequireSceneAsync(settings.ProjectId, settings.SceneId, cancellationToken);
         if (settings.ProviderId is not null)
         {
-            var selection = await ResolveProviderAsync(project, settings, cancellationToken);
+            var selection = await ResolveExplicitProviderAsync(settings, cancellationToken);
             ResolveDuration(scene, settings, selection.Model);
             ResolveResolution(project, settings, selection.Model);
             ValidateAspectRatio(project, selection.Model);
@@ -126,7 +129,8 @@ public sealed class VideoGenerationCoordinator
         var (project, scene) = await RequireSceneAsync(projectId, sceneId, cancellationToken);
         var settings = await _settings.GetAsync(projectId, sceneId, cancellationToken)
             ?? CreateDefaultSettings(project, sceneId);
-        var selection = await ResolveProviderAsync(project, settings, cancellationToken);
+        var providerPlan = await ResolveProviderPlanAsync(settings, cancellationToken);
+        var selection = providerPlan.Primary;
         var duration = ResolveDuration(scene, settings, selection.Model);
         var resolution = ResolveResolution(project, settings, selection.Model);
         var aspectRatio = ResolveAspectRatio(project.AspectRatio);
@@ -140,6 +144,17 @@ public sealed class VideoGenerationCoordinator
         var approved = await ResolveApprovedKeyframesAsync(projectId, sceneId, settings.UseEndFrame, cancellationToken);
         var prompt = await RequireSelectedPromptAsync(projectId, scene, cancellationToken);
         var estimatedCost = selection.Provider.Id == "mock-video" ? 0m : (decimal?)null;
+        var fallbacks = settings.AllowFallback
+            ? providerPlan.Alternatives
+                .Where(candidate => CanAcceptResolvedRequest(
+                    candidate.Model,
+                    duration,
+                    aspectRatio,
+                    resolution,
+                    settings.UseEndFrame))
+                .Select(candidate => new VideoProviderCandidate(candidate.Provider.Id, candidate.Model.ModelId))
+                .ToArray()
+            : [];
 
         var planned = await _clips.RegisterPlannedAsync(
             projectId,
@@ -170,7 +185,8 @@ public sealed class VideoGenerationCoordinator
                 duration.TotalSeconds,
                 aspectRatio,
                 resolution,
-                settings.AllowFallback);
+                settings.AllowFallback,
+                fallbacks);
 
             var dependencies = new[] { approved.Start.JobId, approved.End?.JobId }
                 .Where(id => id.HasValue)
@@ -276,21 +292,23 @@ public sealed class VideoGenerationCoordinator
         return new ApprovedKeyframes(start, useEndFrame ? end : null, new MediaLocation(startMedia.Location), endLocation);
     }
 
-    private async Task<ProviderSelection> ResolveProviderAsync(
-        MusicVideoProject project,
+    private async Task<ProviderSelection> ResolveExplicitProviderAsync(
         SceneVideoGenerationSettings settings,
         CancellationToken cancellationToken)
     {
-        if (settings.ProviderId is not null && settings.ModelId is not null)
-        {
-            var descriptor = await _catalog.GetAsync(settings.ProviderId, cancellationToken)
-                ?? throw new KeyNotFoundException($"Provider '{settings.ProviderId}' was not found.");
-            var providerSettings = await _providerSettings.GetAsync(descriptor.Id, cancellationToken);
-            return ValidateSelection(descriptor, providerSettings, settings.ModelId);
-        }
+        var descriptor = await _catalog.GetAsync(settings.ProviderId!, cancellationToken)
+            ?? throw new KeyNotFoundException($"Provider '{settings.ProviderId}' was not found.");
+        var providerSettings = await _providerSettings.GetAsync(descriptor.Id, cancellationToken);
+        return ValidateSelection(descriptor, providerSettings, settings.ModelId!);
+    }
 
+    private async Task<ProviderPlan> ResolveProviderPlanAsync(
+        SceneVideoGenerationSettings settings,
+        CancellationToken cancellationToken)
+    {
         var descriptors = await _catalog.ListAsync(cancellationToken);
         var providerSettingsById = await _providerSettings.ListAsync(cancellationToken);
+        var automatic = new List<ProviderSelection>();
         foreach (var descriptor in descriptors
                      .Where(descriptor => providerSettingsById.TryGetValue(descriptor.Id, out var providerSettings) && providerSettings.Enabled)
                      .OrderBy(descriptor => providerSettingsById[descriptor.Id].Priority)
@@ -301,15 +319,28 @@ public sealed class VideoGenerationCoordinator
             if (!providerSettings.DefaultModels.TryGetValue(ProviderCapability.ImageToVideo, out var modelId)) continue;
             try
             {
-                return ValidateSelection(descriptor, providerSettings, modelId);
+                automatic.Add(ValidateSelection(descriptor, providerSettings, modelId));
             }
-            catch (ArgumentException)
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
             {
-                // Continue across enabled providers when one has stale model settings.
+                // Ignore stale/incompatible provider defaults and continue routing.
             }
         }
 
-        throw new InvalidOperationException($"No enabled image-to-video provider is available for project '{project.Id}'.");
+        if (settings.ProviderId is null)
+        {
+            if (automatic.Count == 0)
+            {
+                throw new InvalidOperationException("No enabled image-to-video provider is available.");
+            }
+            return new ProviderPlan(automatic[0], automatic.Skip(1).ToArray());
+        }
+
+        var primary = await ResolveExplicitProviderAsync(settings, cancellationToken);
+        var alternatives = automatic
+            .Where(candidate => !string.Equals(candidate.Provider.Id, primary.Provider.Id, StringComparison.Ordinal))
+            .ToArray();
+        return new ProviderPlan(primary, alternatives);
     }
 
     private static ProviderSelection ValidateSelection(
@@ -332,6 +363,21 @@ public sealed class VideoGenerationCoordinator
             throw new ArgumentException($"Model '{modelId}' does not support start-frame image-to-video generation.");
         }
         return new ProviderSelection(provider, model, settings);
+    }
+
+    private static bool CanAcceptResolvedRequest(
+        ProviderModelDescriptor model,
+        TimeSpan duration,
+        string aspectRatio,
+        string resolution,
+        bool useEndFrame)
+    {
+        if (!model.Capabilities.Contains(ProviderCapability.ImageToVideo) || !model.SupportsStartFrame) return false;
+        if (useEndFrame && !model.SupportsEndFrame) return false;
+        if (model.SupportedDurationsSeconds.Count > 0 && !model.SupportedDurationsSeconds.Contains((int)duration.TotalSeconds)) return false;
+        if (model.SupportedAspectRatios.Count > 0 && !model.SupportedAspectRatios.Contains(aspectRatio, StringComparer.OrdinalIgnoreCase)) return false;
+        if (model.SupportedResolutions.Count > 0 && !model.SupportedResolutions.Contains(resolution, StringComparer.OrdinalIgnoreCase)) return false;
+        return true;
     }
 
     private static TimeSpan ResolveDuration(
@@ -404,6 +450,8 @@ public sealed class VideoGenerationCoordinator
         ProviderDescriptor Provider,
         ProviderModelDescriptor Model,
         ProviderSettings Settings);
+
+    private sealed record ProviderPlan(ProviderSelection Primary, IReadOnlyList<ProviderSelection> Alternatives);
 
     private sealed record ApprovedKeyframes(
         KeyframeVariant Start,
