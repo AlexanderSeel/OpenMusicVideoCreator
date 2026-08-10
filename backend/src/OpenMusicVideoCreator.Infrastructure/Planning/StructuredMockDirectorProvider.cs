@@ -1,5 +1,6 @@
 using OpenMusicVideoCreator.Application.Planning;
 using OpenMusicVideoCreator.Application.Providers;
+using OpenMusicVideoCreator.Domain.Planning;
 
 namespace OpenMusicVideoCreator.Infrastructure.Planning;
 
@@ -22,8 +23,9 @@ public sealed class StructuredMockDirectorProvider : IDirectorPlanningProvider
         }
 
         var boundaries = BuildSceneBoundaries(input);
-        var scenes = new List<PlannedScene>(boundaries.Count - 1);
-        for (var index = 0; index < boundaries.Count - 1; index++)
+        var sceneCount = boundaries.Count - 1;
+        var scenes = new List<PlannedScene>(sceneCount);
+        for (var index = 0; index < sceneCount; index++)
         {
             var start = boundaries[index];
             var end = boundaries[index + 1];
@@ -38,12 +40,13 @@ public sealed class StructuredMockDirectorProvider : IDirectorPlanningProvider
                 : new[] { input.Characters[index % input.Characters.Count].Id };
             var styles = input.Styles.Select(style => style.Id).Take(2).ToArray();
             var locations = location is null ? Array.Empty<Guid>() : new[] { location.Id };
+            var details = BuildSceneDetails(input, section, center, index, sceneCount);
 
             scenes.Add(new PlannedScene(
                 start,
                 end,
                 section is null ? $"Scene {index + 1}" : $"{section.Label} · {index + 1}",
-                BuildIntent(input, section?.Label, index, scenes.Capacity),
+                BuildIntent(input, section?.Label, index),
                 BuildAction(input, index),
                 location is null
                     ? BuildFallbackEnvironment(input, index)
@@ -52,7 +55,8 @@ public sealed class StructuredMockDirectorProvider : IDirectorPlanningProvider
                 IsNearAnchor(start, input) ? "Musical cut on structure boundary" : "Rhythmic cut",
                 characters,
                 styles,
-                locations));
+                locations,
+                details));
         }
 
         var candidate = new DirectorPlanningCandidate(
@@ -73,6 +77,8 @@ public sealed class StructuredMockDirectorProvider : IDirectorPlanningProvider
             .Distinct()
             .OrderBy(value => value)
             .ToArray();
+        var expectedSceneDuration = duration / targetCount;
+        var anchorTolerance = Math.Max(2.25, Math.Min(4d, expectedSceneDuration * 0.55));
 
         var boundaries = new List<double>(targetCount + 1) { 0 };
         for (var index = 1; index < targetCount; index++)
@@ -80,7 +86,7 @@ public sealed class StructuredMockDirectorProvider : IDirectorPlanningProvider
             var expected = duration * index / targetCount;
             var nearest = anchors
                 .Select(anchor => new { Anchor = anchor, Distance = Math.Abs(anchor - expected) })
-                .Where(candidate => candidate.Distance <= 2.25)
+                .Where(candidate => candidate.Distance <= anchorTolerance)
                 .OrderBy(candidate => candidate.Distance)
                 .FirstOrDefault();
             var proposed = nearest?.Anchor ?? expected;
@@ -120,15 +126,67 @@ public sealed class StructuredMockDirectorProvider : IDirectorPlanningProvider
             new(time, label, description, Math.Clamp(emotional, 0, 1), Math.Clamp(visual, 0, 1), Math.Clamp(cameraEnergy, 0, 1));
     }
 
+    private static StoryboardSceneDetails BuildSceneDetails(
+        DirectorPlanningInput input,
+        PlanningMusicalSection? section,
+        double centerSeconds,
+        int index,
+        int sceneCount)
+    {
+        var lyricLines = input.Lyrics.Split(
+            new[] { '\r', '\n' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var lyric = lyricLines.Length == 0
+            ? string.Empty
+            : lyricLines[Math.Clamp((int)Math.Floor(centerSeconds / input.DurationSeconds * lyricLines.Length), 0, lyricLines.Length - 1)];
+        var symbolic = input.Controls.LiteralToSymbolic >= 0.55;
+        var abstractVisuals = input.Controls.Abstraction >= 0.55;
+        var lighting = input.Controls.Darkness switch
+        {
+            >= 0.7 => "Low-key, shadow-led lighting with restrained practical highlights.",
+            <= 0.3 => "Warm, open lighting with soft practical or natural highlights.",
+            _ => "Balanced cinematic contrast with controlled warmth and shadow.",
+        };
+        var composition = index % 4 switch
+        {
+            0 => "Establish spatial relationships with a readable wide or medium-wide frame.",
+            1 => "Move closer and isolate the emotional subject within the frame.",
+            2 => "Use layered foreground/background depth and purposeful negative space.",
+            _ => "Resolve the phrase with a contrasting angle or intimate detail composition.",
+        };
+        var purpose = $"Advance the {section?.Label ?? "current musical phrase"} without repeating the previous visual beat; scene {index + 1} of {sceneCount}.";
+        var emotion = $"{input.Mood}; emotional intensity {input.Controls.Emotion:0.00}, acting intensity {input.Controls.ActingIntensity:0.00}.";
+        var environmentMotion = input.Controls.Complexity >= 0.6
+            ? "Use layered but readable environmental motion synchronized to the scene energy."
+            : "Keep environmental motion restrained so the primary action remains legible.";
+        var symbolism = symbolic
+            ? abstractVisuals
+                ? "Prefer symbolic, metaphorical visual change over literal lyric illustration."
+                : "Use symbolic imagery grounded in recognizable physical action and space."
+            : "Prefer direct narrative imagery; symbolism may support but must not replace the readable action.";
+        var continuity = "Preserve selected character identity/state, wardrobe locks, style grammar, location constraints, and visible changes established by preceding scenes.";
+
+        return new StoryboardSceneDetails(
+            section?.Label ?? "Musical phrase",
+            lyric,
+            purpose,
+            emotion,
+            composition,
+            lighting,
+            environmentMotion,
+            symbolism,
+            continuity);
+    }
+
     private static string BuildSummary(DirectorPlanningInput input, int sceneCount) =>
         $"{sceneCount} scene visual arc for {input.Mood} {input.Genre}; " +
         $"literal/symbolic {input.Controls.LiteralToSymbolic:0.00}, narrative {input.Controls.NarrativeStrength:0.00}, " +
-        $"surrealism {input.Controls.Surrealism:0.00}. {input.VisualDirection}".Trim();
+        $"abstraction {input.Controls.Abstraction:0.00}, surrealism {input.Controls.Surrealism:0.00}. {input.VisualDirection}".Trim();
 
-    private static string BuildIntent(DirectorPlanningInput input, string? section, int index, int _) =>
+    private static string BuildIntent(DirectorPlanningInput input, string? section, int index) =>
         $"{section ?? "Musical phrase"}: express {input.Meaning} through " +
         $"{(input.Controls.LiteralToSymbolic >= 0.55 ? "symbolic" : "more literal")} imagery; " +
-        $"preserve the project storyline while advancing beat {index + 1}.";
+        $"preserve the project storyline while advancing visual beat {index + 1}.";
 
     private static string BuildAction(DirectorPlanningInput input, int index)
     {
