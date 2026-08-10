@@ -12,6 +12,7 @@ using OpenMusicVideoCreator.Application.Library;
 using OpenMusicVideoCreator.Application.Planning;
 using OpenMusicVideoCreator.Application.Projects;
 using OpenMusicVideoCreator.Application.Providers;
+using OpenMusicVideoCreator.Application.Rendering;
 using OpenMusicVideoCreator.Application.SystemInfo;
 using OpenMusicVideoCreator.Infrastructure.Generation;
 using OpenMusicVideoCreator.Infrastructure.Jobs;
@@ -19,6 +20,7 @@ using OpenMusicVideoCreator.Infrastructure.Media;
 using OpenMusicVideoCreator.Infrastructure.Persistence;
 using OpenMusicVideoCreator.Infrastructure.Planning;
 using OpenMusicVideoCreator.Infrastructure.Providers;
+using OpenMusicVideoCreator.Infrastructure.Rendering;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -134,6 +136,10 @@ builder.Services.AddSingleton<IImageToVideoProviderResolver, ImageToVideoProvide
 builder.Services.AddSingleton<ClipVariantService>();
 builder.Services.AddSingleton<VideoGenerationCoordinator>();
 
+builder.Services.AddSingleton<IProjectRenderRepository, DuckDbProjectRenderRepository>();
+builder.Services.AddSingleton<IProjectRenderEngine, FfmpegProjectRenderEngine>();
+builder.Services.AddSingleton<ProjectRenderService>();
+
 builder.Services.AddSingleton<IJobRepository, DuckDbJobRepository>();
 builder.Services.AddSingleton<JobChangeHub>();
 builder.Services.AddSingleton<IJobChangePublisher>(services => services.GetRequiredService<JobChangeHub>());
@@ -142,7 +148,8 @@ builder.Services.AddSingleton<JobService>();
 builder.Services.AddSingleton<IJobQueue>(services => services.GetRequiredService<JobService>());
 builder.Services.AddSingleton<MockJobExecutionDispatcher>();
 builder.Services.AddSingleton<GenerationJobExecutionDispatcher>();
-builder.Services.AddSingleton<IJobExecutionDispatcher, VideoGenerationJobExecutionDispatcher>();
+builder.Services.AddSingleton<VideoGenerationJobExecutionDispatcher>();
+builder.Services.AddSingleton<IJobExecutionDispatcher, ProjectRenderJobExecutionDispatcher>();
 builder.Services.AddSingleton<JobProcessor>();
 if (builder.Configuration.GetValue("Jobs:WorkerEnabled", true))
 {
@@ -182,6 +189,7 @@ app.MapLibraryEndpoints();
 app.MapPlanningEndpoints();
 app.MapKeyframeEndpoints();
 app.MapClipEndpoints();
+app.MapRenderEndpoints();
 app.MapProviderEndpoints();
 app.MapJobEndpoints();
 
