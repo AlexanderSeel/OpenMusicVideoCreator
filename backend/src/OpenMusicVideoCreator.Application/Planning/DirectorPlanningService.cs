@@ -98,7 +98,6 @@ public sealed class DirectorPlanningService
 
         var latestStoryboard = await _storyboards.GetLatestAsync(projectId, cancellationToken);
         var storyboardId = Guid.NewGuid();
-        var promptTemplate = PromptTemplate.StoryboardSceneV1;
         var prompts = new List<PromptVersion>(providerResult.Value.Scenes.Count);
         var scenes = new List<StoryboardScene>(providerResult.Value.Scenes.Count);
 
@@ -120,7 +119,8 @@ public sealed class DirectorPlanningService
                 candidate.CharacterIds.Distinct().ToArray(),
                 candidate.StyleIds.Distinct().ToArray(),
                 candidate.LocationIds.Distinct().ToArray(),
-                null);
+                null,
+                candidate.Details);
             var prompt = CreatePromptVersion(context, scene, storyboardId, 1, null, now);
             prompts.Add(prompt);
             scenes.Add(scene with { SelectedPromptVersionId = prompt.Id });
@@ -153,13 +153,14 @@ public sealed class DirectorPlanningService
         IReadOnlyList<VisualArcPoint> points,
         CancellationToken cancellationToken = default)
     {
-        var analysis = await RequireLatestAnalysisAsync(projectId, cancellationToken);
+        controls.Validate();
         var latest = await _visualArcs.GetLatestAsync(projectId, cancellationToken)
             ?? throw new KeyNotFoundException($"Project '{projectId}' has no Visual Arc.");
+        var analysis = await RequireAnalysisAsync(latest.SongAnalysisId, cancellationToken);
         var version = new VisualArcVersion(
             Guid.NewGuid(),
             projectId,
-            analysis.Id,
+            latest.SongAnalysisId,
             latest.Version + 1,
             summary.Trim(),
             controls,
@@ -176,7 +177,6 @@ public sealed class DirectorPlanningService
         StoryboardScene edited,
         CancellationToken cancellationToken = default)
     {
-        var analysis = await RequireLatestAnalysisAsync(projectId, cancellationToken);
         var latest = await _storyboards.GetLatestAsync(projectId, cancellationToken)
             ?? throw new KeyNotFoundException($"Project '{projectId}' has no storyboard.");
         var existing = latest.Scenes.SingleOrDefault(scene => scene.Id == sceneId)
@@ -186,10 +186,11 @@ public sealed class DirectorPlanningService
             throw new ArgumentException("Scene identity and sequence cannot be changed through scene editing.", nameof(edited));
         }
         await ValidateSceneReferencesAsync(projectId, edited, cancellationToken);
+        var (analysis, visualArc) = await RequireStoryboardContextAsync(projectId, latest, cancellationToken);
 
         var newStoryboardId = Guid.NewGuid();
         var promptVersionNumber = (await _prompts.GetLatestBySceneAsync(projectId, sceneId, cancellationToken))?.Version + 1 ?? 1;
-        var context = await BuildContextAsync(projectId, DirectorControls.Balanced, cancellationToken);
+        var context = await BuildContextAsync(projectId, visualArc.Controls, analysis, cancellationToken);
         var prompt = CreatePromptVersion(context, edited, newStoryboardId, promptVersionNumber, null, GetUtcNow());
         var replaced = edited with { SelectedPromptVersionId = prompt.Id };
         var scenes = latest.Scenes.Select(scene => scene.Id == sceneId ? replaced : scene).ToArray();
@@ -198,7 +199,7 @@ public sealed class DirectorPlanningService
         var version = new StoryboardVersion(
             newStoryboardId,
             projectId,
-            analysis.Id,
+            latest.SongAnalysisId,
             latest.VisualArcId,
             latest.Version + 1,
             scenes,
@@ -213,9 +214,9 @@ public sealed class DirectorPlanningService
         IReadOnlyList<Guid> orderedSceneIds,
         CancellationToken cancellationToken = default)
     {
-        var analysis = await RequireLatestAnalysisAsync(projectId, cancellationToken);
         var latest = await _storyboards.GetLatestAsync(projectId, cancellationToken)
             ?? throw new KeyNotFoundException($"Project '{projectId}' has no storyboard.");
+        var (analysis, _) = await RequireStoryboardContextAsync(projectId, latest, cancellationToken);
         if (orderedSceneIds.Count != latest.Scenes.Count ||
             orderedSceneIds.Distinct().Count() != latest.Scenes.Count ||
             orderedSceneIds.Any(id => latest.Scenes.All(scene => scene.Id != id)))
@@ -236,7 +237,7 @@ public sealed class DirectorPlanningService
         var version = new StoryboardVersion(
             Guid.NewGuid(),
             projectId,
-            analysis.Id,
+            latest.SongAnalysisId,
             latest.VisualArcId,
             latest.Version + 1,
             scenes,
@@ -255,8 +256,9 @@ public sealed class DirectorPlanningService
             ?? throw new KeyNotFoundException($"Project '{projectId}' has no storyboard.");
         var scene = latest.Scenes.SingleOrDefault(candidate => candidate.Id == sceneId)
             ?? throw new KeyNotFoundException($"Scene '{sceneId}' was not found.");
-        var analysis = await RequireLatestAnalysisAsync(projectId, cancellationToken);
-        var context = await BuildContextAsync(projectId, DirectorControls.Balanced, cancellationToken);
+        await ValidateSceneReferencesAsync(projectId, scene, cancellationToken);
+        var (analysis, visualArc) = await RequireStoryboardContextAsync(projectId, latest, cancellationToken);
+        var context = await BuildContextAsync(projectId, visualArc.Controls, analysis, cancellationToken);
         var promptNumber = (await _prompts.GetLatestBySceneAsync(projectId, sceneId, cancellationToken))?.Version + 1 ?? 1;
         var storyboardId = Guid.NewGuid();
         var prompt = CreatePromptVersion(context, scene, storyboardId, promptNumber, userNotes, GetUtcNow());
@@ -266,7 +268,7 @@ public sealed class DirectorPlanningService
         var storyboard = new StoryboardVersion(
             storyboardId,
             projectId,
-            analysis.Id,
+            latest.SongAnalysisId,
             latest.VisualArcId,
             latest.Version + 1,
             scenes,
@@ -282,9 +284,22 @@ public sealed class DirectorPlanningService
         DirectorControls controls,
         CancellationToken cancellationToken)
     {
+        var analysis = await RequireLatestAnalysisAsync(projectId, cancellationToken);
+        return await BuildContextAsync(projectId, controls, analysis, cancellationToken);
+    }
+
+    private async Task<DirectorPlanningInput> BuildContextAsync(
+        Guid projectId,
+        DirectorControls controls,
+        SongAnalysis analysis,
+        CancellationToken cancellationToken)
+    {
         var project = await _projects.GetAsync(projectId, cancellationToken)
             ?? throw new KeyNotFoundException($"Project '{projectId}' was not found.");
-        var analysis = await RequireLatestAnalysisAsync(projectId, cancellationToken);
+        if (analysis.ProjectId != projectId)
+        {
+            throw new InvalidDataException("Director planning analysis does not belong to the project.");
+        }
         var library = await _library.ListAsync(cancellationToken);
         var characterStates = await _characterStates.ListAsync(projectId, cancellationToken);
 
@@ -350,6 +365,32 @@ public sealed class DirectorPlanningService
         await _analyses.GetLatestAsync(projectId, cancellationToken)
             ?? throw new InvalidOperationException("Analyze the song before Director planning.");
 
+    private async Task<SongAnalysis> RequireAnalysisAsync(Guid analysisId, CancellationToken cancellationToken) =>
+        await _analyses.GetAsync(analysisId, cancellationToken)
+            ?? throw new InvalidDataException($"Storyboard provenance references missing song analysis '{analysisId}'.");
+
+    private async Task<VisualArcVersion> RequireVisualArcAsync(
+        Guid projectId,
+        Guid visualArcId,
+        CancellationToken cancellationToken) =>
+        (await _visualArcs.ListVersionsAsync(projectId, cancellationToken))
+            .SingleOrDefault(arc => arc.Id == visualArcId)
+            ?? throw new InvalidDataException($"Storyboard provenance references missing Visual Arc '{visualArcId}'.");
+
+    private async Task<(SongAnalysis Analysis, VisualArcVersion VisualArc)> RequireStoryboardContextAsync(
+        Guid projectId,
+        StoryboardVersion storyboard,
+        CancellationToken cancellationToken)
+    {
+        var analysis = await RequireAnalysisAsync(storyboard.SongAnalysisId, cancellationToken);
+        var visualArc = await RequireVisualArcAsync(projectId, storyboard.VisualArcId, cancellationToken);
+        if (analysis.ProjectId != projectId || visualArc.ProjectId != projectId || visualArc.SongAnalysisId != storyboard.SongAnalysisId)
+        {
+            throw new InvalidDataException("Storyboard analysis and Visual Arc provenance do not match.");
+        }
+        return (analysis, visualArc);
+    }
+
     private static IReadOnlyList<VisualLibraryItem> ResolveReferences(
         MusicVideoProject project,
         IReadOnlyList<VisualLibraryItem> library,
@@ -381,6 +422,10 @@ public sealed class DirectorPlanningService
             new VisualArcPoint(Guid.NewGuid(), point.TimeSeconds, point.Label, point.Description, point.EmotionalIntensity, point.VisualIntensity, point.CameraEnergy)
                 .Validate(input.DurationSeconds);
         }
+        if (candidate.Scenes.Any(scene => scene.Details is null))
+        {
+            throw new InvalidDataException("Director returned a scene without structured creative details.");
+        }
 
         var allowedCharacters = input.Characters.Select(reference => reference.Id).ToHashSet();
         var allowedStyles = input.Styles.Select(reference => reference.Id).ToHashSet();
@@ -399,7 +444,8 @@ public sealed class DirectorPlanningService
             scene.CharacterIds,
             scene.StyleIds,
             scene.LocationIds,
-            null)).ToArray();
+            null,
+            scene.Details)).ToArray();
         StoryboardVersion.ValidateScenes(input.DurationSeconds, scenes);
         if (Math.Abs(scenes[0].StartSeconds) > 0.05 || Math.Abs(scenes[^1].EndSeconds - input.DurationSeconds) > 0.05)
         {
@@ -447,7 +493,8 @@ public sealed class DirectorPlanningService
         string? userNotes,
         DateTimeOffset now)
     {
-        var template = PromptTemplate.StoryboardSceneV1;
+        var template = PromptTemplate.StoryboardSceneV2;
+        var details = scene.EffectiveDetails;
         var continuity = string.Join(" | ", context.Characters
             .Where(reference => scene.CharacterIds.Contains(reference.Id))
             .Select(reference => $"{reference.Name}: {reference.ContinuityContext}")
@@ -455,9 +502,18 @@ public sealed class DirectorPlanningService
             .Concat(context.Locations.Where(reference => scene.LocationIds.Contains(reference.Id)).Select(reference => $"Location {reference.Name}: {reference.ContinuityContext}")));
         var prompt = template.Template
             .Replace("{intent}", scene.DirectorIntent, StringComparison.Ordinal)
+            .Replace("{purpose}", details.Purpose, StringComparison.Ordinal)
+            .Replace("{songSection}", details.SongSection, StringComparison.Ordinal)
+            .Replace("{lyric}", details.AssociatedLyric, StringComparison.Ordinal)
             .Replace("{action}", scene.Action, StringComparison.Ordinal)
-            .Replace("{environment}", scene.Environment, StringComparison.Ordinal)
+            .Replace("{emotion}", details.Emotion, StringComparison.Ordinal)
+            .Replace("{composition}", details.Composition, StringComparison.Ordinal)
             .Replace("{camera}", scene.Camera, StringComparison.Ordinal)
+            .Replace("{lighting}", details.Lighting, StringComparison.Ordinal)
+            .Replace("{environment}", scene.Environment, StringComparison.Ordinal)
+            .Replace("{environmentMotion}", details.EnvironmentMotion, StringComparison.Ordinal)
+            .Replace("{visualSymbolism}", details.VisualSymbolism, StringComparison.Ordinal)
+            .Replace("{continuityRequirements}", details.ContinuityRequirements, StringComparison.Ordinal)
             .Replace("{continuity}", continuity, StringComparison.Ordinal);
         if (!string.IsNullOrWhiteSpace(userNotes))
         {
