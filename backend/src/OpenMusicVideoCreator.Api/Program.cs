@@ -144,6 +144,7 @@ builder.Services.AddSingleton<IJobRepository, DuckDbJobRepository>();
 builder.Services.AddSingleton<JobChangeHub>();
 builder.Services.AddSingleton<IJobChangePublisher>(services => services.GetRequiredService<JobChangeHub>());
 builder.Services.AddSingleton<IJobChangeStream>(services => services.GetRequiredService<JobChangeHub>());
+builder.Services.AddSingleton<IJobExecutionCancellationRegistry, InMemoryJobExecutionCancellationRegistry>();
 builder.Services.AddSingleton<JobService>();
 builder.Services.AddSingleton<IJobQueue>(services => services.GetRequiredService<JobService>());
 builder.Services.AddSingleton<MockJobExecutionDispatcher>();
