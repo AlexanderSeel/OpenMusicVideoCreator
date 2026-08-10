@@ -56,6 +56,47 @@ public sealed record KeyframeVariant(
     }
 }
 
+public sealed record SceneKeyframeGenerationSettings(
+    Guid ProjectId,
+    Guid SceneId,
+    string? ProviderId,
+    string? ModelId,
+    bool GenerateEndFrame,
+    string? Resolution,
+    int? Seed,
+    string? NegativePrompt,
+    DateTimeOffset UpdatedUtc)
+{
+    public void Validate()
+    {
+        if (ProjectId == Guid.Empty || SceneId == Guid.Empty)
+        {
+            throw new ArgumentException("Scene keyframe settings require project and scene IDs.");
+        }
+        if ((ProviderId is null) != (ModelId is null))
+        {
+            throw new ArgumentException("Provider and model must either both be selected or both use automatic routing.");
+        }
+        if (ProviderId is not null && (string.IsNullOrWhiteSpace(ProviderId) || string.IsNullOrWhiteSpace(ModelId)))
+        {
+            throw new ArgumentException("Provider and model cannot be blank.");
+        }
+        if (Resolution is not null && !TryParseResolution(Resolution, out _, out _))
+        {
+            throw new ArgumentException("Resolution must use WIDTHxHEIGHT format.");
+        }
+    }
+
+    public static bool TryParseResolution(string value, out int width, out int height)
+    {
+        width = 0;
+        height = 0;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var parts = value.ToLowerInvariant().Split('x', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 2 && int.TryParse(parts[0], out width) && int.TryParse(parts[1], out height) && width > 0 && height > 0;
+    }
+}
+
 public sealed record SceneKeyframeSelection(
     Guid ProjectId,
     Guid SceneId,
