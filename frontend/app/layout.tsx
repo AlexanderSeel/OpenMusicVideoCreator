@@ -6,6 +6,7 @@ import "./director.css";
 import "./keyframes.css";
 import "./generation.css";
 import "./rendering.css";
+import "./timeline.css";
 
 export const metadata: Metadata = {
   title: "OpenMusicVideoCreator",
