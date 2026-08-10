@@ -84,53 +84,97 @@ public sealed class VideoGenerationJobExecutionDispatcher : IJobExecutionDispatc
 
         await _clips.MarkStateAsync(projectId, clip.Id, GenerationVariantState.Generating, cancellationToken);
 
-        ProviderResult<ProviderAsset> providerResult;
-        try
+        var candidates = new List<VideoProviderCandidate>
         {
-            var provider = _videoProviders.Resolve(job.ProviderId);
-            providerResult = await provider.GenerateVideoAsync(
-                new ImageToVideoRequest(
-                    job.ModelId,
-                    payload.StartFrame,
-                    payload.EndFrame,
-                    payload.Prompt,
-                    TimeSpan.FromSeconds(payload.DurationSeconds)),
-                cancellationToken);
-        }
-        catch (KeyNotFoundException exception)
+            new(job.ProviderId, job.ModelId),
+        };
+        if (payload.AllowFallback)
         {
-            await _clips.MarkStateAsync(projectId, clip.Id, GenerationVariantState.Failed, cancellationToken);
-            return JobExecutionResult.Failed(new ProviderFailure(
-                ProviderFailureCode.UnsupportedCapability,
-                exception.Message,
-                Retryable: false));
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            await _clips.MarkStateAsync(projectId, clip.Id, GenerationVariantState.Queued, cancellationToken);
-            return JobExecutionResult.Failed(new ProviderFailure(
-                ProviderFailureCode.TransientFailure,
-                $"Video provider execution failed: {exception.Message}",
-                Retryable: true));
+            foreach (var candidate in payload.Fallbacks ?? [])
+            {
+                if (candidates.Any(existing => string.Equals(existing.ProviderId, candidate.ProviderId, StringComparison.Ordinal) &&
+                                               string.Equals(existing.ModelId, candidate.ModelId, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+                candidates.Add(candidate);
+            }
         }
 
-        if (!providerResult.IsSuccess || providerResult.Value is null)
+        ProviderExecution? execution = null;
+        ProviderFailure? finalFailure = null;
+        for (var index = 0; index < candidates.Count; index++)
         {
-            var failure = providerResult.Failure ?? new ProviderFailure(
+            var candidate = candidates[index];
+            ProviderResult<ProviderAsset> result;
+            try
+            {
+                var provider = _videoProviders.Resolve(candidate.ProviderId);
+                result = await provider.GenerateVideoAsync(
+                    new ImageToVideoRequest(
+                        candidate.ModelId,
+                        payload.StartFrame,
+                        payload.EndFrame,
+                        payload.Prompt,
+                        TimeSpan.FromSeconds(payload.DurationSeconds)),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (KeyNotFoundException exception)
+            {
+                result = ProviderResult<ProviderAsset>.Failed(new ProviderFailure(
+                    ProviderFailureCode.UnsupportedCapability,
+                    exception.Message,
+                    Retryable: false));
+            }
+            catch (Exception exception)
+            {
+                result = ProviderResult<ProviderAsset>.Failed(new ProviderFailure(
+                    ProviderFailureCode.TransientFailure,
+                    $"Video provider execution failed: {exception.Message}",
+                    Retryable: true));
+            }
+
+            if (result.IsSuccess && result.Value is not null)
+            {
+                execution = new ProviderExecution(candidate.ProviderId, candidate.ModelId, result);
+                break;
+            }
+
+            finalFailure = result.Failure ?? new ProviderFailure(
                 ProviderFailureCode.PermanentFailure,
                 "Video provider returned no asset.",
+                Retryable: false);
+            var hasNext = index + 1 < candidates.Count;
+            if (!hasNext || !CanFallback(finalFailure))
+            {
+                break;
+            }
+        }
+
+        if (execution is null)
+        {
+            var failure = finalFailure ?? new ProviderFailure(
+                ProviderFailureCode.PermanentFailure,
+                "No image-to-video provider completed the request.",
                 Retryable: false);
             await _clips.MarkStateAsync(projectId, clip.Id, VariantStateForFailure(failure), cancellationToken);
             return JobExecutionResult.Failed(failure);
         }
 
+        if (!string.Equals(execution.ProviderId, clip.ProviderId, StringComparison.Ordinal) ||
+            !string.Equals(execution.ModelId, clip.ModelId, StringComparison.Ordinal))
+        {
+            clip = await _clips.UpdateProviderAsync(projectId, clip.Id, execution.ProviderId, execution.ModelId, cancellationToken);
+        }
+
+        var providerResult = execution.Result;
         try
         {
-            var materialized = await MaterializeAsync(providerResult.Value, cancellationToken);
+            var materialized = await MaterializeAsync(providerResult.Value!, cancellationToken);
             await using var content = materialized.Content;
             var fileName = $"scene-{sceneId:N}-clip-v{clip.VariantNumber}.{materialized.Extension}";
             var stored = await _mediaStorage.SaveAsync(projectId, MediaStorageArea.Generated, content, fileName, cancellationToken);
@@ -142,7 +186,7 @@ public sealed class VideoGenerationJobExecutionDispatcher : IJobExecutionDispatc
                 stored.Location.Value,
                 stored.ChecksumSha256,
                 materialized.MimeType,
-                providerResult.Value.Width ?? width,
+                providerResult.Value!.Width ?? width,
                 providerResult.Value.Height ?? height,
                 providerResult.Value.Duration ?? TimeSpan.FromSeconds(payload.DurationSeconds),
                 stored.FileSize,
@@ -222,6 +266,17 @@ public sealed class VideoGenerationJobExecutionDispatcher : IJobExecutionDispatc
         }
     }
 
+    private static bool CanFallback(ProviderFailure failure) => failure.Code is
+        ProviderFailureCode.RateLimited or
+        ProviderFailureCode.ProviderUnavailable or
+        ProviderFailureCode.QuotaExhausted or
+        ProviderFailureCode.InsufficientCredits or
+        ProviderFailureCode.AuthenticationFailed or
+        ProviderFailureCode.UnsupportedCapability or
+        ProviderFailureCode.NetworkFailure or
+        ProviderFailureCode.Timeout or
+        ProviderFailureCode.TransientFailure;
+
     private static GenerationVariantState VariantStateForFailure(ProviderFailure failure) =>
         failure.Retryable || failure.Code is
             ProviderFailureCode.RateLimited or
@@ -257,6 +312,11 @@ public sealed class VideoGenerationJobExecutionDispatcher : IJobExecutionDispatc
         var ticks = now.Ticks - (now.Ticks % TimeSpan.TicksPerMicrosecond);
         return new DateTimeOffset(ticks, TimeSpan.Zero);
     }
+
+    private sealed record ProviderExecution(
+        string ProviderId,
+        string ModelId,
+        ProviderResult<ProviderAsset> Result);
 
     private sealed record MaterializedProviderAsset(Stream Content, string MimeType, string Extension);
 }
