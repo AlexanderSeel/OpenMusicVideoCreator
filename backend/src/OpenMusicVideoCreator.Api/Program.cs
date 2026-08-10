@@ -6,14 +6,17 @@ using OpenMusicVideoCreator.Api.Jobs;
 using OpenMusicVideoCreator.Api.Middleware;
 using OpenMusicVideoCreator.Application.Abstractions;
 using OpenMusicVideoCreator.Application.Analysis;
+using OpenMusicVideoCreator.Application.Generation;
 using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Application.Library;
+using OpenMusicVideoCreator.Application.Planning;
 using OpenMusicVideoCreator.Application.Projects;
 using OpenMusicVideoCreator.Application.Providers;
 using OpenMusicVideoCreator.Application.SystemInfo;
 using OpenMusicVideoCreator.Infrastructure.Jobs;
 using OpenMusicVideoCreator.Infrastructure.Media;
 using OpenMusicVideoCreator.Infrastructure.Persistence;
+using OpenMusicVideoCreator.Infrastructure.Planning;
 using OpenMusicVideoCreator.Infrastructure.Providers;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -108,6 +111,18 @@ builder.Services.AddSingleton<IVideoGenerationProvider>(services => services.Get
 builder.Services.AddSingleton<IImageToVideoProvider>(services => services.GetRequiredService<MockVideoProvider>());
 builder.Services.AddSingleton<IVideoToVideoProvider>(services => services.GetRequiredService<MockVideoProvider>());
 
+builder.Services.AddSingleton<DuckDbPlanningRepository>();
+builder.Services.AddSingleton<IVisualArcRepository>(services => services.GetRequiredService<DuckDbPlanningRepository>());
+builder.Services.AddSingleton<IStoryboardRepository>(services => services.GetRequiredService<DuckDbPlanningRepository>());
+builder.Services.AddSingleton<IPromptHistoryRepository>(services => services.GetRequiredService<DuckDbPlanningRepository>());
+builder.Services.AddSingleton<IDirectorPlanningProvider, StructuredMockDirectorProvider>();
+builder.Services.AddSingleton<DirectorPlanningService>();
+
+builder.Services.AddSingleton<IKeyframeVariantRepository, DuckDbKeyframeVariantRepository>();
+builder.Services.AddSingleton<IKeyframeApprovalRepository, DuckDbKeyframeApprovalRepository>();
+builder.Services.AddSingleton<KeyframeVariantService>();
+builder.Services.AddSingleton<KeyframeApprovalService>();
+
 builder.Services.AddSingleton<IJobRepository, DuckDbJobRepository>();
 builder.Services.AddSingleton<JobChangeHub>();
 builder.Services.AddSingleton<IJobChangePublisher>(services => services.GetRequiredService<JobChangeHub>());
@@ -151,6 +166,8 @@ app.MapGet("/api/system/version", (IHostEnvironment environment) =>
 app.MapProjectEndpoints();
 app.MapSongAnalysisEndpoints();
 app.MapLibraryEndpoints();
+app.MapPlanningEndpoints();
+app.MapKeyframeEndpoints();
 app.MapProviderEndpoints();
 app.MapJobEndpoints();
 
