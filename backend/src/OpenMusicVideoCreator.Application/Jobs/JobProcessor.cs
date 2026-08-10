@@ -63,13 +63,20 @@ public sealed class JobProcessor
 
             await _jobService.ApplyExecutionResultAsync(claimed.Id, result, cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            throw;
-        }
-        catch (OperationCanceledException) when (await WasCancelledAsync(claimed.Id))
-        {
-            // User cancellation is already persisted. Do not turn the cancelled local execution into a retry/failure.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+
+            if (!await WasCancelledAsync(claimed.Id))
+            {
+                await ApplyWorkerFailureAsync(
+                    claimed.Id,
+                    "Job execution was cancelled without a persisted user cancellation.",
+                    cancellationToken);
+            }
         }
         catch (Exception exception)
         {
@@ -78,14 +85,9 @@ public sealed class JobProcessor
                 return true;
             }
 
-            await _jobService.ApplyProviderFailureAsync(
+            await ApplyWorkerFailureAsync(
                 claimed.Id,
-                new ProviderFailure(
-                    ProviderFailureCode.TransientFailure,
-                    $"Job execution failed: {exception.Message}",
-                    Retryable: true,
-                    RetryAfter: TimeSpan.FromSeconds(1),
-                    ProviderCode: "worker_exception"),
+                $"Job execution failed: {exception.Message}",
                 cancellationToken);
         }
         finally
@@ -95,6 +97,20 @@ public sealed class JobProcessor
 
         return true;
     }
+
+    private Task<GenerationJob> ApplyWorkerFailureAsync(
+        Guid jobId,
+        string message,
+        CancellationToken cancellationToken) =>
+        _jobService.ApplyProviderFailureAsync(
+            jobId,
+            new ProviderFailure(
+                ProviderFailureCode.TransientFailure,
+                message,
+                Retryable: true,
+                RetryAfter: TimeSpan.FromSeconds(1),
+                ProviderCode: "worker_exception"),
+            cancellationToken);
 
     private async Task<bool> WasCancelledAsync(Guid jobId)
     {
