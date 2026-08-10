@@ -141,10 +141,19 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
         }
         catch (Exception exception)
         {
-            await _renders.FailAsync(projectId, render.Id, exception.Message, null, cancellationToken);
+            var message = $"Project rendering failed: {exception.Message}";
+            if (job.RetryCount < job.MaxRetries)
+            {
+                await _renders.MarkRetryPendingAsync(projectId, render.Id, message, null, cancellationToken);
+            }
+            else
+            {
+                await _renders.FailAsync(projectId, render.Id, message, null, cancellationToken);
+            }
+
             return JobExecutionResult.Failed(new ProviderFailure(
                 ProviderFailureCode.TransientFailure,
-                $"Project rendering failed: {exception.Message}",
+                message,
                 Retryable: true,
                 ProviderCode: "render_transient"));
         }
