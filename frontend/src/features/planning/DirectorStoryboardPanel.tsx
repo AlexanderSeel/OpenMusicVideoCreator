@@ -18,6 +18,7 @@ import {
   type VisualArcResponse,
   type VisualLibraryResponse,
 } from "@/src/api/client";
+import { SceneReferenceEditor } from "./SceneReferenceEditor";
 
 interface DirectorStoryboardPanelProps {
   projectId?: string;
@@ -121,7 +122,7 @@ export function DirectorStoryboardPanel({ projectId, visualLibrary }: DirectorSt
     if (!projectId || !arc || busy) return;
     setBusy(true);
     try {
-      const saved = await saveVisualArc(projectId, { ...arc, controls });
+      const saved = await saveVisualArc(projectId, { summary: arc.summary, controls, points: arc.points });
       setArc(saved);
       setMessage(`Visual Arc saved as version ${saved.version}.`);
     } catch (error) {
@@ -147,6 +148,7 @@ export function DirectorStoryboardPanel({ projectId, visualLibrary }: DirectorSt
         characterIds: sceneDraft.characterIds,
         styleIds: sceneDraft.styleIds,
         locationIds: sceneDraft.locationIds,
+        details: sceneDraft.details,
       };
       const saved = await updateStoryboardScene(projectId, sceneDraft.id, request);
       setStoryboard(saved);
@@ -248,7 +250,7 @@ export function DirectorStoryboardPanel({ projectId, visualLibrary }: DirectorSt
                 <button key={scene.id} role="listitem" type="button" className={`storyboard-card ${scene.id === selectedSceneId ? "is-selected" : ""}`} onClick={() => setSelectedSceneId(scene.id)}>
                   <span className="scene-number">{String(scene.sequence).padStart(2, "0")}</span>
                   <strong>{scene.title}</strong>
-                  <span>{formatTime(scene.startSeconds)} – {formatTime(scene.endSeconds)} · {(scene.endSeconds - scene.startSeconds).toFixed(1)}s</span>
+                  <span>{formatTime(scene.startSeconds)} – {formatTime(scene.endSeconds)} · {(scene.endSeconds - scene.startSeconds).toFixed(1)}s · {scene.details.songSection}</span>
                   <small>{scene.directorIntent}</small>
                 </button>
               ))}
@@ -256,21 +258,27 @@ export function DirectorStoryboardPanel({ projectId, visualLibrary }: DirectorSt
 
             {sceneDraft ? (
               <aside className="scene-inspector" aria-label="Selected scene editor">
-                <div className="scene-inspector-heading"><div><strong>Scene {sceneDraft.sequence}</strong><span>Edits version only this storyboard state.</span></div><div><button className="icon-button" type="button" disabled={busy || sceneDraft.sequence === 1} onClick={() => void moveScene(-1)} aria-label="Move scene earlier">↑</button><button className="icon-button" type="button" disabled={busy || sceneDraft.sequence === storyboard.scenes.length} onClick={() => void moveScene(1)} aria-label="Move scene later">↓</button></div></div>
+                <div className="scene-inspector-heading"><div><strong>Scene {sceneDraft.sequence}</strong><span>Edits create a new storyboard and prompt version without starting generation.</span></div><div><button className="icon-button" type="button" disabled={busy || sceneDraft.sequence === 1} onClick={() => void moveScene(-1)} aria-label="Move scene earlier">↑</button><button className="icon-button" type="button" disabled={busy || sceneDraft.sequence === storyboard.scenes.length} onClick={() => void moveScene(1)} aria-label="Move scene later">↓</button></div></div>
                 <label className="field"><span>Title</span><input value={sceneDraft.title} onChange={(event) => patchScene({ title: event.target.value })} /></label>
                 <div className="field-grid two-columns"><label className="field"><span>Start</span><input type="number" step="0.1" min="0" value={sceneDraft.startSeconds} onChange={(event) => patchScene({ startSeconds: Number(event.target.value) })} /></label><label className="field"><span>End</span><input type="number" step="0.1" min="0" value={sceneDraft.endSeconds} onChange={(event) => patchScene({ endSeconds: Number(event.target.value) })} /></label></div>
+                <div className="field-grid two-columns"><label className="field"><span>Song section</span><input value={sceneDraft.details.songSection} onChange={(event) => patchSceneDetails({ songSection: event.target.value })} /></label><label className="field"><span>Associated lyric</span><input value={sceneDraft.details.associatedLyric} onChange={(event) => patchSceneDetails({ associatedLyric: event.target.value })} /></label></div>
                 <label className="field"><span>Director Intent</span><textarea rows={4} value={sceneDraft.directorIntent} onChange={(event) => patchScene({ directorIntent: event.target.value })} /></label>
+                <label className="field"><span>Scene purpose</span><textarea rows={2} value={sceneDraft.details.purpose} onChange={(event) => patchSceneDetails({ purpose: event.target.value })} /></label>
                 <label className="field"><span>Action</span><textarea rows={3} value={sceneDraft.action} onChange={(event) => patchScene({ action: event.target.value })} /></label>
+                <label className="field"><span>Emotion</span><textarea rows={2} value={sceneDraft.details.emotion} onChange={(event) => patchSceneDetails({ emotion: event.target.value })} /></label>
+                <label className="field"><span>Composition</span><textarea rows={2} value={sceneDraft.details.composition} onChange={(event) => patchSceneDetails({ composition: event.target.value })} /></label>
+                <label className="field"><span>Camera shot & movement</span><textarea rows={2} value={sceneDraft.camera} onChange={(event) => patchScene({ camera: event.target.value })} /></label>
+                <label className="field"><span>Lighting</span><textarea rows={2} value={sceneDraft.details.lighting} onChange={(event) => patchSceneDetails({ lighting: event.target.value })} /></label>
                 <label className="field"><span>Environment</span><textarea rows={3} value={sceneDraft.environment} onChange={(event) => patchScene({ environment: event.target.value })} /></label>
-                <label className="field"><span>Camera</span><textarea rows={2} value={sceneDraft.camera} onChange={(event) => patchScene({ camera: event.target.value })} /></label>
+                <label className="field"><span>Environment motion</span><textarea rows={2} value={sceneDraft.details.environmentMotion} onChange={(event) => patchSceneDetails({ environmentMotion: event.target.value })} /></label>
+                <label className="field"><span>Visual symbolism</span><textarea rows={2} value={sceneDraft.details.visualSymbolism} onChange={(event) => patchSceneDetails({ visualSymbolism: event.target.value })} /></label>
+                <label className="field"><span>Continuity requirements</span><textarea rows={3} value={sceneDraft.details.continuityRequirements} onChange={(event) => patchSceneDetails({ continuityRequirements: event.target.value })} /></label>
                 <label className="field"><span>Transition in</span><input value={sceneDraft.transitionIn} onChange={(event) => patchScene({ transitionIn: event.target.value })} /></label>
-                <ReferenceChips title="Characters" ids={sceneDraft.characterIds} library={visualLibrary} />
-                <ReferenceChips title="Styles" ids={sceneDraft.styleIds} library={visualLibrary} />
-                <ReferenceChips title="Locations" ids={sceneDraft.locationIds} library={visualLibrary} />
+                <SceneReferenceEditor scene={sceneDraft} library={visualLibrary} onChange={patchScene} />
                 <button className="button button-primary" type="button" disabled={busy} onClick={() => void saveSceneChanges()}>Save scene</button>
 
                 <div className="prompt-history">
-                  <div className="prompt-history-heading"><strong>Prompt history</strong><span>Prompt revision does not spend generation credits.</span></div>
+                  <div className="prompt-history-heading"><strong>Prompt history</strong><span>Director Intent stays separate from the expanded provider prompt. Prompt revision does not spend generation credits.</span></div>
                   <label className="field"><span>Refinement notes</span><textarea rows={2} value={promptNotes} onChange={(event) => setPromptNotes(event.target.value)} placeholder="More intimate camera, less literal, preserve wardrobe…" /></label>
                   <button className="button" type="button" disabled={busy} onClick={() => void regeneratePrompt()}>Regenerate prompt only</button>
                   {promptHistory.map((prompt) => (
@@ -297,6 +305,10 @@ export function DirectorStoryboardPanel({ projectId, visualLibrary }: DirectorSt
   function patchScene(patch: Partial<StoryboardSceneResponse>) {
     setSceneDraft((current) => current ? { ...current, ...patch } : current);
   }
+
+  function patchSceneDetails(patch: Partial<StoryboardSceneResponse["details"]>) {
+    setSceneDraft((current) => current ? { ...current, details: { ...current.details, ...patch } } : current);
+  }
 }
 
 function DirectorHeading() {
@@ -305,11 +317,6 @@ function DirectorHeading() {
 
 function ArcSlider({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
   return <label className="arc-slider"><span>{label}<output>{Math.round(value * 100)}%</output></span><input type="range" min="0" max="1" step="0.05" value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>;
-}
-
-function ReferenceChips({ title, ids, library }: { title: string; ids: string[]; library: VisualLibraryResponse[] }) {
-  if (ids.length === 0) return null;
-  return <div className="scene-reference-chips"><span>{title}</span><div>{ids.map((id) => <em key={id}>{library.find((item) => item.id === id)?.name ?? "Missing reference"}</em>)}</div></div>;
 }
 
 function formatTime(seconds: number): string {
