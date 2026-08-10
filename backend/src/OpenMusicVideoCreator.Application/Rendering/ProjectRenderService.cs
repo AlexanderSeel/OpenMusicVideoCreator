@@ -6,7 +6,6 @@ using OpenMusicVideoCreator.Application.Generation;
 using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Application.Planning;
 using OpenMusicVideoCreator.Domain.Generation;
-using OpenMusicVideoCreator.Domain.Media;
 using OpenMusicVideoCreator.Domain.Projects;
 using OpenMusicVideoCreator.Domain.Rendering;
 
@@ -50,6 +49,7 @@ public sealed class ProjectRenderService
     private readonly IMediaAssetRepository _mediaAssets;
     private readonly IProjectRenderRepository _renders;
     private readonly IJobQueue _jobs;
+    private readonly JobService _jobService;
     private readonly TimeProvider _timeProvider;
 
     public ProjectRenderService(
@@ -59,6 +59,7 @@ public sealed class ProjectRenderService
         IMediaAssetRepository mediaAssets,
         IProjectRenderRepository renders,
         IJobQueue jobs,
+        JobService jobService,
         TimeProvider timeProvider)
     {
         _projects = projects;
@@ -67,6 +68,7 @@ public sealed class ProjectRenderService
         _mediaAssets = mediaAssets;
         _renders = renders;
         _jobs = jobs;
+        _jobService = jobService;
         _timeProvider = timeProvider;
     }
 
@@ -162,7 +164,8 @@ public sealed class ProjectRenderService
             null,
             null,
             now,
-            now);
+            now,
+            []);
         record.Validate();
         await _renders.UpsertAsync(record, cancellationToken);
 
@@ -171,8 +174,8 @@ public sealed class ProjectRenderService
                 projectId,
                 SceneId: null,
                 ParentJobId: null,
-                JobType,
-                JsonSerializer.Serialize(new ProjectRenderJobPayload(record.Id), JsonOptions),
+                Type: JobType,
+                PayloadJson: JsonSerializer.Serialize(new ProjectRenderJobPayload(record.Id), JsonOptions),
                 Priority: kind == ProjectRenderKind.Preview ? 120 : 100,
                 MaxRetries: 1,
                 EstimatedCost: 0m,
@@ -194,8 +197,25 @@ public sealed class ProjectRenderService
     public async Task<ProjectRenderRecord> MarkRenderingAsync(
         Guid projectId,
         Guid renderId,
-        CancellationToken cancellationToken = default) =>
-        await UpdateStateAsync(projectId, renderId, ProjectRenderState.Rendering, null, null, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        var existing = await RequireAsync(projectId, renderId, cancellationToken);
+        var attempts = existing.ResolveAttempts().ToList();
+        attempts.Add(new ProjectRenderAttempt(
+            attempts.Count + 1,
+            ProjectRenderState.Rendering,
+            GetUtcNow(),
+            null,
+            null,
+            null));
+        return await SaveAsync(existing with
+        {
+            State = ProjectRenderState.Rendering,
+            ErrorMessage = null,
+            Attempts = attempts,
+            UpdatedUtc = GetUtcNow(),
+        }, cancellationToken);
+    }
 
     public async Task<ProjectRenderRecord> CompleteAsync(
         Guid projectId,
@@ -206,17 +226,16 @@ public sealed class ProjectRenderService
     {
         if (outputMediaAssetId == Guid.Empty) throw new ArgumentException("Output media asset ID is required.", nameof(outputMediaAssetId));
         var existing = await RequireAsync(projectId, renderId, cancellationToken);
-        var completed = existing with
+        var attempts = CompleteCurrentAttempt(existing, ProjectRenderState.Completed, commandLog, null);
+        return await SaveAsync(existing with
         {
             OutputMediaAssetId = outputMediaAssetId,
             State = ProjectRenderState.Completed,
             CommandLog = commandLog,
             ErrorMessage = null,
+            Attempts = attempts,
             UpdatedUtc = GetUtcNow(),
-        };
-        completed.Validate();
-        await _renders.UpsertAsync(completed, cancellationToken);
-        return completed;
+        }, cancellationToken);
     }
 
     public async Task<ProjectRenderRecord> FailAsync(
@@ -224,32 +243,133 @@ public sealed class ProjectRenderService
         Guid renderId,
         string errorMessage,
         string? commandLog,
-        CancellationToken cancellationToken = default) =>
-        await UpdateStateAsync(projectId, renderId, ProjectRenderState.Failed, errorMessage, commandLog, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        var existing = await RequireAsync(projectId, renderId, cancellationToken);
+        var attempts = CompleteCurrentAttempt(existing, ProjectRenderState.Failed, commandLog, errorMessage);
+        return await SaveAsync(existing with
+        {
+            State = ProjectRenderState.Failed,
+            ErrorMessage = errorMessage,
+            CommandLog = commandLog ?? existing.CommandLog,
+            Attempts = attempts,
+            UpdatedUtc = GetUtcNow(),
+        }, cancellationToken);
+    }
+
+    public async Task<ProjectRenderRecord> MarkRetryPendingAsync(
+        Guid projectId,
+        Guid renderId,
+        string errorMessage,
+        string? commandLog,
+        CancellationToken cancellationToken = default)
+    {
+        var existing = await RequireAsync(projectId, renderId, cancellationToken);
+        var attempts = CompleteCurrentAttempt(existing, ProjectRenderState.Failed, commandLog, errorMessage);
+        return await SaveAsync(existing with
+        {
+            State = ProjectRenderState.Queued,
+            ErrorMessage = errorMessage,
+            CommandLog = commandLog ?? existing.CommandLog,
+            Attempts = attempts,
+            UpdatedUtc = GetUtcNow(),
+        }, cancellationToken);
+    }
+
+    public async Task<ProjectRenderRecord> CancelAsync(
+        Guid projectId,
+        Guid renderId,
+        CancellationToken cancellationToken = default)
+    {
+        var existing = await RequireAsync(projectId, renderId, cancellationToken);
+        if (existing.State == ProjectRenderState.Completed)
+        {
+            throw new InvalidOperationException("Completed renders cannot be cancelled.");
+        }
+        if (existing.JobId is not Guid jobId)
+        {
+            throw new InvalidOperationException("Render has no persisted job to cancel.");
+        }
+
+        var changed = await _jobService.CancelAsync(jobId, cancellationToken);
+        if (!changed)
+        {
+            var job = await _jobService.GetAsync(jobId, cancellationToken);
+            if (job?.State != Domain.Jobs.JobState.Cancelled)
+            {
+                throw new InvalidOperationException("Render job cannot be cancelled in its current state.");
+            }
+        }
+
+        var attempts = CompleteCurrentAttempt(existing, ProjectRenderState.Cancelled, existing.CommandLog, "Cancelled by user.");
+        return await SaveAsync(existing with
+        {
+            State = ProjectRenderState.Cancelled,
+            ErrorMessage = "Cancelled by user.",
+            Attempts = attempts,
+            UpdatedUtc = GetUtcNow(),
+        }, cancellationToken);
+    }
+
+    public async Task<ProjectRenderRecord> RetryAsync(
+        Guid projectId,
+        Guid renderId,
+        CancellationToken cancellationToken = default)
+    {
+        var existing = await RequireAsync(projectId, renderId, cancellationToken);
+        if (existing.State is not (ProjectRenderState.Failed or ProjectRenderState.Cancelled))
+        {
+            throw new InvalidOperationException("Only failed or cancelled renders can be retried.");
+        }
+        if (existing.JobId is not Guid jobId)
+        {
+            throw new InvalidOperationException("Render has no persisted job to restart.");
+        }
+
+        if (!await _jobService.RestartAsync(jobId, cancellationToken))
+        {
+            throw new InvalidOperationException("Render job could not be restarted.");
+        }
+
+        return await SaveAsync(existing with
+        {
+            State = ProjectRenderState.Queued,
+            OutputMediaAssetId = null,
+            ErrorMessage = null,
+            UpdatedUtc = GetUtcNow(),
+        }, cancellationToken);
+    }
 
     public static ProjectRenderJobPayload DeserializePayload(string json) =>
         JsonSerializer.Deserialize<ProjectRenderJobPayload>(json, JsonOptions)
         ?? throw new InvalidDataException("Render job payload could not be deserialized.");
 
-    private async Task<ProjectRenderRecord> UpdateStateAsync(
-        Guid projectId,
-        Guid renderId,
+    private IReadOnlyList<ProjectRenderAttempt> CompleteCurrentAttempt(
+        ProjectRenderRecord render,
         ProjectRenderState state,
-        string? errorMessage,
         string? commandLog,
-        CancellationToken cancellationToken)
+        string? errorMessage)
     {
-        var existing = await RequireAsync(projectId, renderId, cancellationToken);
-        var updated = existing with
+        var attempts = render.ResolveAttempts().ToList();
+        if (attempts.Count == 0 || attempts[^1].CompletedUtc is not null)
+        {
+            return attempts;
+        }
+        attempts[^1] = attempts[^1] with
         {
             State = state,
+            CompletedUtc = GetUtcNow(),
+            CommandLog = commandLog ?? attempts[^1].CommandLog,
             ErrorMessage = errorMessage,
-            CommandLog = commandLog ?? existing.CommandLog,
-            UpdatedUtc = GetUtcNow(),
         };
-        updated.Validate();
-        await _renders.UpsertAsync(updated, cancellationToken);
-        return updated;
+        return attempts;
+    }
+
+    private async Task<ProjectRenderRecord> SaveAsync(ProjectRenderRecord render, CancellationToken cancellationToken)
+    {
+        render.Validate();
+        await _renders.UpsertAsync(render, cancellationToken);
+        return render;
     }
 
     private async Task<ProjectRenderRecord> RequireAsync(Guid projectId, Guid renderId, CancellationToken cancellationToken) =>
