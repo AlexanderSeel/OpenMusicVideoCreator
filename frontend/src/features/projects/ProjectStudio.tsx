@@ -20,6 +20,7 @@ import { VideoGenerationWorkspace } from "@/src/features/generation/VideoGenerat
 import { VisualLibraryPanel } from "@/src/features/library/VisualLibraryPanel";
 import { DirectorStoryboardPanel } from "@/src/features/planning/DirectorStoryboardPanel";
 import { ProjectRenderWorkspace } from "@/src/features/rendering/ProjectRenderWorkspace";
+import { AdvancedTimelineAnalysisPanel } from "@/src/features/timeline/AdvancedTimelineAnalysisPanel";
 import { AdvancedTimelineEditor } from "@/src/features/timeline/AdvancedTimelineEditor";
 import { ProjectForm } from "./ProjectForm";
 import { ProjectSidebar } from "./ProjectSidebar";
@@ -159,7 +160,7 @@ export function ProjectStudio() {
         <KeyframeWorkspace projectId={editor.id} mode={mode} />
         <VideoGenerationWorkspace projectId={editor.id} mode={mode} />
         <GenerationQueuePanel projectId={editor.id} mode={mode} />
-        {mode !== "Simple" ? <AdvancedTimelineEditor projectId={editor.id} /> : null}
+        {mode !== "Simple" ? <><AdvancedTimelineAnalysisPanel projectId={editor.id} /><AdvancedTimelineEditor projectId={editor.id} /></> : null}
         <ProjectRenderWorkspace projectId={editor.id} />
       </section>
     </main>
