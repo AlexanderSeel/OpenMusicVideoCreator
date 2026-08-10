@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenMusicVideoCreator.Application.Abstractions;
+using OpenMusicVideoCreator.Application.Analysis;
 using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Application.Providers;
 using OpenMusicVideoCreator.Application.Rendering;
@@ -17,6 +18,7 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
     private readonly IProjectRenderEngine _engine;
     private readonly IMediaStorage _mediaStorage;
     private readonly IMediaAssetRepository _mediaAssets;
+    private readonly IMediaProbe _mediaProbe;
     private readonly TimeProvider _timeProvider;
 
     public ProjectRenderJobExecutionDispatcher(
@@ -25,6 +27,7 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
         IProjectRenderEngine engine,
         IMediaStorage mediaStorage,
         IMediaAssetRepository mediaAssets,
+        IMediaProbe mediaProbe,
         TimeProvider timeProvider)
     {
         _fallback = fallback;
@@ -32,6 +35,7 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
         _engine = engine;
         _mediaStorage = mediaStorage;
         _mediaAssets = mediaAssets;
+        _mediaProbe = mediaProbe;
         _timeProvider = timeProvider;
     }
 
@@ -84,6 +88,19 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
                 result.Content,
                 fileName,
                 cancellationToken);
+
+            MediaProbeResult probe;
+            try
+            {
+                probe = await _mediaProbe.ProbeAsync(stored.Location, cancellationToken);
+                ValidateProbe(render.Manifest, probe);
+            }
+            catch
+            {
+                await _mediaStorage.DeleteAsync(stored.Location, CancellationToken.None);
+                throw;
+            }
+
             var mediaId = Guid.NewGuid();
             await _mediaAssets.UpsertAsync(new MediaAssetMetadata(
                 mediaId,
@@ -93,7 +110,7 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
                 result.MimeType,
                 result.Width,
                 result.Height,
-                result.Duration,
+                TimeSpan.FromSeconds(probe.DurationSeconds),
                 stored.FileSize,
                 MediaCreationSource.Rendered,
                 GetUtcNow()), cancellationToken);
@@ -130,6 +147,22 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
                 $"Project rendering failed: {exception.Message}",
                 Retryable: true,
                 ProviderCode: "render_transient"));
+        }
+    }
+
+    private static void ValidateProbe(ProjectRenderManifest manifest, MediaProbeResult probe)
+    {
+        var durationTolerance = Math.Max(0.15, 2d / manifest.FramesPerSecond);
+        if (!double.IsFinite(probe.DurationSeconds) || probe.DurationSeconds <= 0 ||
+            Math.Abs(probe.DurationSeconds - manifest.DurationSeconds) > durationTolerance)
+        {
+            throw new InvalidDataException(
+                $"Rendered duration {probe.DurationSeconds:0.###}s does not match manifest duration {manifest.DurationSeconds:0.###}s within {durationTolerance:0.###}s.");
+        }
+
+        if (probe.Channels is null or <= 0)
+        {
+            throw new InvalidDataException("Rendered MP4 does not contain a valid audio stream from the original Song source.");
         }
     }
 
