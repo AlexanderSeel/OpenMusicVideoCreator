@@ -28,15 +28,15 @@ No paid-provider credentials are required for the baseline/mock test plan.
 - [ ] `npm run typecheck`
   - 2026-08-10 earlier failure: `DirectorStoryboardPanel.tsx` and `SceneReferenceEditor.tsx` imported planning/storyboard client exports that were missing from `src/api/client`.
   - 2026-08-10 repository fix: the planning OpenAPI snapshot and typed client exports/operations were added. **Rerun still required; this item is intentionally not marked passed.**
-  - Blocks 9–10 now add dedicated keyframe/clip/job client modules and generation workspaces; typecheck must cover those too.
+  - Blocks 9–11 now add dedicated keyframe/clip/job/render client modules and workspaces; typecheck must cover those too.
 - [ ] `npm run test:frontend`
 - [ ] `npm run build:frontend`
 - [x] `dotnet build backend/OpenMusicVideoCreator.sln -c Release`
-  - This successful build predates the final Block 8/9/10 completion changes; rerun the baseline build before treating it as proof for these blocks.
+  - This successful build predates the final Block 8/9/10/11 completion changes; rerun the baseline build before treating it as proof for these blocks.
 - [ ] `dotnet test backend/OpenMusicVideoCreator.sln -c Release`
   - 2026-08-10 earlier run: 38/44 API tests passed. Failures: concurrent DuckDB initialization conflicts on `schema_migrations` (four tests), a planning scene-boundary expectation, and visual-library collection round-trip equality.
   - 2026-08-10 repository fix: the mock Director now uses a music-relative anchor tolerance that reaches the expected 58s structural boundary and tests also cover structured scene details. **Rerun still required; unrelated DuckDB/library failures remain unresolved until proven otherwise.**
-  - Blocks 9–10 add keyframe/video generation tests; none have been executed in the current connector-only environment.
+  - Blocks 9–11 add keyframe/video/render tests; none have been executed in the current connector-only environment.
 - [ ] `./scripts/validate.sh` on Linux/macOS or `./scripts/validate.ps1` on Windows/PowerShell.
 - [ ] `./scripts/run.ps1 -NoBrowser` starts the backend and frontend, serves `/healthz` and `http://localhost:3000`, and stops both processes with Ctrl+C.
 - [x] `npm audit` reports no known vulnerabilities.
@@ -199,17 +199,39 @@ Real image-provider validation is intentionally deferred until the complete mock
 
 Real video-provider validation is intentionally deferred until the complete mock matrix above succeeds.
 
-## Cross-cutting security/data checks after Blocks 1–10
+## Block 11 — Deterministic assembly, preview render, and initial export
+
+- [ ] Run `ProjectRenderFlowTests`; confirm selected clip ordering, original Song provenance, preview/final timeline identity, and FFmpeg argument safety tests pass.
+- [ ] Run `frontend/tests/project-render-workspace-ui.test.mjs`, TypeScript typecheck, lint, and frontend build with the mounted Project Render workspace.
+- [ ] Queue Preview through `POST /api/projects/{projectId}/renders/`; confirm HTTP returns `202` before FFmpeg completes and the persistent `project.render` job later reaches `Completed`.
+- [ ] Confirm the render manifest uses the latest storyboard scene order/timing and requires exactly one selected completed clip for every scene; missing selections must return a conflict instead of silently skipping scenes.
+- [ ] Confirm Preview and Final created from unchanged selections have the same `timelineSha256`, `StoryboardVersionId`, `SongMediaAssetId`, clip variant IDs, media IDs, starts, durations, and transition metadata.
+- [ ] Verify the FFmpeg process receives every source path via `ProcessStartInfo.ArgumentList`; repeat with clip/song filenames containing spaces and shell metacharacters and confirm no shell interpretation occurs.
+- [ ] Inspect the generated FFmpeg mapping and confirm the only audio input is the project's original uploaded Song media asset; generated clip audio must not be mapped into the final mix.
+- [ ] Run a fixture where selected clip durations differ from storyboard scene durations; confirm trim/setpts/scale/crop/fps filters produce the exact storyboard timeline duration.
+- [ ] Generate Preview and confirm it uses the lower-resolution/faster profile while Final uses the configured final resolution/H.264 profile; both must retain the same timeline hash.
+- [ ] Exercise configured 16:9, 9:16, and 1:1 project resolutions and confirm output dimensions are even, preserve the target canvas, and reuse the same selected source variants rather than regenerating clips.
+- [ ] Restart the backend after queueing a render and confirm persisted render/job/manifest history remains the source of truth and prior completed render outputs remain downloadable.
+- [ ] Force FFmpeg failure or remove a selected source before execution; confirm no source/generated media is modified and no completed output asset is published for the failed render.
+- [ ] Complete two Preview/Final renders and confirm prior render versions, output media IDs, timeline hashes, and command logs remain recoverable and are not overwritten.
+- [ ] Download a completed output through `/api/projects/{projectId}/renders/{renderId}/output` and confirm the MP4 is range-safe/playable in the supported browser.
+- [ ] Use ffprobe on the completed Final output and compare duration against the render manifest/storyboard final boundary within the agreed tolerance; verify audio starts at zero and spans the final duration without drift.
+- [ ] Confirm actual FFmpeg output uses the original Song content as source; document any container-required audio transcoding separately from source-selection provenance.
+- [ ] Keyboard/responsive pass for Preview/Final actions, render history, status/error state, provenance details, command-log disclosure, and download links.
+
+Render-specific cancellation/retry synchronization, richer transitions/overlays/subtitles, and post-render ffprobe validation remain implementation items until completed and proven.
+
+## Cross-cutting security/data checks after Blocks 1–11
 
 - [ ] Search source/config/exported project data for accidentally committed/resolved credentials.
 - [ ] Upload filenames containing `../`, `..\\`, separators, and invalid characters are rejected.
 - [ ] FFmpeg/ffprobe execution uses argument lists/typed process invocation; test a filename containing spaces/shell metacharacters and verify it is treated only as a path argument.
-- [ ] Project/song/analysis/library/planning/generation operations do not mutate or silently delete original uploaded media bytes.
-- [ ] Restart application between key operations and verify DuckDB/project settings/jobs/media metadata remain the source of truth.
-- [ ] Confirm generated keyframe/clip preview routes only open media metadata belonging to the requested project and cannot traverse outside the configured media root.
+- [ ] Project/song/analysis/library/planning/generation/render operations do not mutate or silently delete original uploaded media bytes.
+- [ ] Restart application between key operations and verify DuckDB/project settings/jobs/media metadata/render history remain the source of truth.
+- [ ] Confirm generated keyframe/clip/render preview/download routes only open media metadata belonging to the requested project and cannot traverse outside the configured media root.
 
 ---
 
 ## Future block validation
 
-Add concrete executable checks here whenever Blocks 11–14 are implemented. Keep implementation checkboxes in `PLAN.md`; keep unexecuted proof here.
+Add concrete executable checks here whenever Blocks 12–14 are implemented. Keep implementation checkboxes in `PLAN.md`; keep unexecuted proof here.
