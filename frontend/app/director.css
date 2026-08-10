@@ -44,6 +44,12 @@
 .scene-reference-chips > span { color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; }
 .scene-reference-chips > div { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .scene-reference-chips em { border: 1px solid var(--line); border-radius: 999px; padding: 0.24rem 0.48rem; color: var(--text-soft); font-size: 0.66rem; font-style: normal; }
+.scene-reference-editor { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; margin: 0.85rem 0; }
+.scene-reference-editor fieldset { min-width: 0; margin: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0.6rem; }
+.scene-reference-editor legend { padding: 0 0.25rem; color: var(--accent); font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.scene-reference-editor label { display: flex; gap: 0.4rem; align-items: flex-start; margin-top: 0.35rem; color: var(--text-soft); font-size: 0.68rem; }
+.scene-reference-editor input { width: auto; margin-top: 0.08rem; }
+.scene-reference-editor .muted { display: block; color: var(--text-muted); font-size: 0.64rem; line-height: 1.35; }
 
 .prompt-history { display: grid; gap: 0.65rem; margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 0.85rem; }
 .prompt-history-heading { display: grid; gap: 0.15rem; }
@@ -64,6 +70,10 @@
   .director-control-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .storyboard-layout { grid-template-columns: 1fr; }
   .storyboard-cards { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); max-height: none; }
+}
+
+@media (max-width: 700px) {
+  .scene-reference-editor { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {
