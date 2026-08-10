@@ -9,6 +9,8 @@ $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $apiProject = Join-Path $repositoryRoot 'backend/src/OpenMusicVideoCreator.Api/OpenMusicVideoCreator.Api.csproj'
+$frontendDirectory = Join-Path $repositoryRoot 'frontend'
+$nextCli = Join-Path $repositoryRoot 'node_modules/next/dist/bin/next'
 $frontendUrl = "http://localhost:$FrontendPort"
 
 function Assert-CommandAvailable {
@@ -46,6 +48,9 @@ Assert-CommandAvailable npm
 if (-not (Test-Path -LiteralPath $apiProject)) {
     throw "API project was not found at '$apiProject'. Run this script from an intact repository checkout."
 }
+if (-not (Test-Path -LiteralPath $nextCli)) {
+    throw "Next.js is not installed at '$nextCli'. Run 'npm install' from the repository root and try again."
+}
 
 $previousApiBaseUrl = $env:NEXT_PUBLIC_API_BASE_URL
 $env:NEXT_PUBLIC_API_BASE_URL = $BackendUrl
@@ -60,8 +65,8 @@ try {
     Wait-ForHttpEndpoint -Url "$BackendUrl/healthz" -ServiceName 'Backend'
 
     Write-Host "Starting frontend at $frontendUrl ..."
-    $frontendProcess = Start-Process -FilePath npm.cmd -WorkingDirectory $repositoryRoot -NoNewWindow -PassThru -ArgumentList @(
-        'run', 'dev:web', '--', '--hostname', 'localhost', '--port', $FrontendPort
+    $frontendProcess = Start-Process -FilePath node -WorkingDirectory $frontendDirectory -NoNewWindow -PassThru -ArgumentList @(
+        $nextCli, 'dev', '--hostname=localhost', "--port=$FrontendPort"
     )
     Wait-ForHttpEndpoint -Url $frontendUrl -ServiceName 'Frontend'
 
