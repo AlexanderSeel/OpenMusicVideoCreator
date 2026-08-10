@@ -20,6 +20,7 @@ import { VideoGenerationWorkspace } from "@/src/features/generation/VideoGenerat
 import { VisualLibraryPanel } from "@/src/features/library/VisualLibraryPanel";
 import { DirectorStoryboardPanel } from "@/src/features/planning/DirectorStoryboardPanel";
 import { ProjectRenderWorkspace } from "@/src/features/rendering/ProjectRenderWorkspace";
+import { AdvancedTimelineEditor } from "@/src/features/timeline/AdvancedTimelineEditor";
 import { ProjectForm } from "./ProjectForm";
 import { ProjectSidebar } from "./ProjectSidebar";
 import { createEmptyProject, editorToRequest, projectToEditor, type EditorState } from "./projectModel";
@@ -147,7 +148,7 @@ export function ProjectStudio() {
 
         <div className="mode-tabs" role="tablist" aria-label="Editor mode">
           {(["Simple", "Advanced", "Custom"] as StudioMode[]).map((candidate) => (
-            <button key={candidate} role="tab" aria-selected={mode === candidate} className={`mode-tab ${mode === candidate ? "is-active" : ""}`} type="button" onClick={() => setMode(candidate)}>{candidate === "Custom" ? "Expert / Custom" : candidate}{candidate !== "Simple" ? <span>generation</span> : null}</button>
+            <button key={candidate} role="tab" aria-selected={mode === candidate} className={`mode-tab ${mode === candidate ? "is-active" : ""}`} type="button" onClick={() => setMode(candidate)}>{candidate === "Custom" ? "Expert / Custom" : candidate}{candidate !== "Simple" ? <span>generation + timeline</span> : null}</button>
           ))}
         </div>
 
@@ -158,6 +159,7 @@ export function ProjectStudio() {
         <KeyframeWorkspace projectId={editor.id} mode={mode} />
         <VideoGenerationWorkspace projectId={editor.id} mode={mode} />
         <GenerationQueuePanel projectId={editor.id} mode={mode} />
+        {mode !== "Simple" ? <AdvancedTimelineEditor projectId={editor.id} /> : null}
         <ProjectRenderWorkspace projectId={editor.id} />
       </section>
     </main>
