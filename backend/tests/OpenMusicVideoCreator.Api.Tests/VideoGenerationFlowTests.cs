@@ -76,7 +76,8 @@ public sealed class VideoGenerationFlowTests
             6,
             "16:9",
             "1280x720",
-            true);
+            true,
+            []);
         var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         jsonOptions.Converters.Add(new JsonStringEnumConverter());
         var job = new GenerationJob(
