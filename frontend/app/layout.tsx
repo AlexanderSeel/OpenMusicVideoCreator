@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 import "./library.css";
+import "./director.css";
+import "./keyframes.css";
 
 export const metadata: Metadata = {
   title: "OpenMusicVideoCreator",
