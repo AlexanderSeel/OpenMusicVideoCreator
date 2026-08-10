@@ -12,7 +12,7 @@ test("project studio mounts deterministic render workspace", () => {
   assert.match(studio, /<ProjectRenderWorkspace projectId=\{editor\.id\}/);
 });
 
-test("render workspace exposes preview final provenance and download flow", () => {
+test("render workspace exposes preview final provenance lifecycle and download flow", () => {
   const workspace = read("src/features/rendering/ProjectRenderWorkspace.tsx");
   for (const token of [
     "Render preview",
@@ -21,16 +21,26 @@ test("render workspace exposes preview final provenance and download flow", () =
     "storyboardVersionId",
     "songMediaAssetId",
     "projectRenderOutputUrl",
+    "Cancel render",
+    "Retry same render",
+    "Render attempts",
     "Deterministic FFmpeg command",
   ]) {
     assert.match(workspace, new RegExp(token));
   }
 });
 
-test("render client queues versioned preview or final renders", () => {
+test("render client covers queue cancel retry attempts and output", () => {
   const client = read("src/api/renders.ts");
-  assert.match(client, /queueProjectRender/);
-  assert.match(client, /ProjectRenderKind/);
-  assert.match(client, /\/renders/);
-  assert.match(client, /\/output/);
+  for (const token of [
+    "queueProjectRender",
+    "cancelProjectRender",
+    "retryProjectRender",
+    "ProjectRenderAttempt",
+    "/cancel",
+    "/retry",
+    "/output",
+  ]) {
+    assert.match(client, new RegExp(token));
+  }
 });
