@@ -99,8 +99,8 @@ public static class KeyframeEndpoints
         {
             try
             {
-                var variants = request.Role is KeyframeRole role
-                    ? [await coordinator.QueueAsync(projectId, sceneId, role, cancellationToken)]
+                IReadOnlyList<KeyframeVariant> variants = request.Role is KeyframeRole role
+                    ? new[] { await coordinator.QueueAsync(projectId, sceneId, role, cancellationToken) }
                     : await coordinator.QueueSceneAsync(projectId, sceneId, cancellationToken);
                 return Results.Accepted(value: KeyframeGenerationResponse.FromDomain(variants));
             }
