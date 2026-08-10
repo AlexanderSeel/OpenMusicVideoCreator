@@ -1,4 +1,5 @@
 using OpenMusicVideoCreator.Application.Abstractions;
+using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Application.Rendering;
 using OpenMusicVideoCreator.Domain.Rendering;
 
@@ -68,11 +69,17 @@ public static class RenderEndpoints
             Guid projectId,
             Guid renderId,
             ProjectRenderService service,
+            IJobExecutionCancellationRegistry executionCancellations,
             CancellationToken cancellationToken) =>
         {
             try
             {
-                return Results.Ok(await service.CancelAsync(projectId, renderId, cancellationToken));
+                var render = await service.CancelAsync(projectId, renderId, cancellationToken);
+                if (render.JobId is Guid jobId)
+                {
+                    executionCancellations.Cancel(jobId);
+                }
+                return Results.Ok(render);
             }
             catch (KeyNotFoundException)
             {
