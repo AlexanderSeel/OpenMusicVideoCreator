@@ -18,6 +18,16 @@ export type AssetLibraryResponse = components["schemas"]["AssetLibraryResponse"]
 export type AssetLibraryUpdateRequest = components["schemas"]["AssetLibraryUpdateRequest"];
 export type ProjectCharacterStateRequest = components["schemas"]["ProjectCharacterStateRequest"];
 export type ProjectCharacterStateResponse = components["schemas"]["ProjectCharacterStateResponse"];
+export type DirectorControls = components["schemas"]["DirectorControls"];
+export type DirectorPlanResponse = components["schemas"]["DirectorPlanResponse"];
+export type VisualArcResponse = components["schemas"]["VisualArcResponse"];
+export type VisualArcUpdateRequest = components["schemas"]["VisualArcUpdateRequest"];
+export type StoryboardSceneDetailsRequest = components["schemas"]["StoryboardSceneDetailsRequest"];
+export type StoryboardResponse = components["schemas"]["StoryboardResponse"];
+export type StoryboardSceneResponse = components["schemas"]["StoryboardSceneResponse"];
+export type SceneUpdateRequest = components["schemas"]["SceneUpdateRequest"];
+export type PromptVersionResponse = components["schemas"]["PromptVersionResponse"];
+export type PromptRegenerateResponse = components["schemas"]["PromptRegenerateResponse"];
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5100";
 
@@ -112,6 +122,50 @@ export async function applyTranscriptionLyricTiming(projectId: string, segments:
 
 export async function listLyricTimingVersions(projectId: string, signal?: AbortSignal): Promise<LyricTimingResponse[]> {
   return readJson<LyricTimingResponse[]>(await fetch(`${apiBaseUrl}/api/projects/${projectId}/analysis/lyrics/timing/versions`, { headers: { Accept: "application/json" }, signal }), "Lyric timing history");
+}
+
+export async function getVisualArc(projectId: string, signal?: AbortSignal): Promise<VisualArcResponse | null> {
+  const response = await fetch(`${apiBaseUrl}/api/projects/${projectId}/director/visual-arc`, { headers: { Accept: "application/json" }, signal });
+  if (response.status === 404) return null;
+  return readJson<VisualArcResponse>(response, "Visual Arc request");
+}
+
+export async function listVisualArcVersions(projectId: string, signal?: AbortSignal): Promise<VisualArcResponse[]> {
+  return readJson<VisualArcResponse[]>(await fetch(`${apiBaseUrl}/api/projects/${projectId}/director/visual-arc/versions`, { headers: { Accept: "application/json" }, signal }), "Visual Arc history");
+}
+
+export async function getStoryboard(projectId: string, signal?: AbortSignal): Promise<StoryboardResponse | null> {
+  const response = await fetch(`${apiBaseUrl}/api/projects/${projectId}/director/storyboard`, { headers: { Accept: "application/json" }, signal });
+  if (response.status === 404) return null;
+  return readJson<StoryboardResponse>(response, "Storyboard request");
+}
+
+export async function listStoryboardVersions(projectId: string, signal?: AbortSignal): Promise<StoryboardResponse[]> {
+  return readJson<StoryboardResponse[]>(await fetch(`${apiBaseUrl}/api/projects/${projectId}/director/storyboard/versions`, { headers: { Accept: "application/json" }, signal }), "Storyboard history");
+}
+
+export async function planStoryboard(projectId: string, controls: DirectorControls): Promise<DirectorPlanResponse> {
+  return readJson<DirectorPlanResponse>(await fetch(`${apiBaseUrl}/api/projects/${projectId}/director/plan`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ controls }) }), "Director planning");
+}
+
+export async function saveVisualArc(projectId: string, request: VisualArcUpdateRequest): Promise<VisualArcResponse> {
+  return readJson<VisualArcResponse>(await fetch(`${apiBaseUrl}/api/projects/${projectId}/director/visual-arc`, { method: "PUT", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(request) }), "Save Visual Arc");
+}
+
+export async function updateStoryboardScene(projectId: string, sceneId: string, request: SceneUpdateRequest): Promise<StoryboardResponse> {
+  return readJson<StoryboardResponse>(await fetch(`${apiBaseUrl}/api/projects/${projectId}/director/storyboard/scenes/${sceneId}`, { method: "PUT", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(request) }), "Save storyboard scene");
+}
+
+export async function reorderStoryboard(projectId: string, sceneIds: string[]): Promise<StoryboardResponse> {
+  return readJson<StoryboardResponse>(await fetch(`${apiBaseUrl}/api/projects/${projectId}/director/storyboard/reorder`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ sceneIds }) }), "Reorder storyboard");
+}
+
+export async function listPromptHistory(projectId: string, sceneId: string, signal?: AbortSignal): Promise<PromptVersionResponse[]> {
+  return readJson<PromptVersionResponse[]>(await fetch(`${apiBaseUrl}/api/projects/${projectId}/director/storyboard/scenes/${sceneId}/prompts`, { headers: { Accept: "application/json" }, signal }), "Prompt history");
+}
+
+export async function regenerateScenePrompt(projectId: string, sceneId: string, notes?: string): Promise<PromptRegenerateResponse> {
+  return readJson<PromptRegenerateResponse>(await fetch(`${apiBaseUrl}/api/projects/${projectId}/director/storyboard/scenes/${sceneId}/prompts/regenerate`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ notes: notes?.trim() || null }) }), "Regenerate scene prompt");
 }
 
 export async function listVisualLibrary(kind?: VisualLibraryKind, signal?: AbortSignal): Promise<VisualLibraryResponse[]> {
