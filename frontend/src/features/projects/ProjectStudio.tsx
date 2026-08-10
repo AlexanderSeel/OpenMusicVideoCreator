@@ -14,7 +14,9 @@ import {
   type VisualLibraryResponse,
 } from "@/src/api/client";
 import { SongAnalysisPanel } from "@/src/features/analysis/SongAnalysisPanel";
+import { GenerationQueuePanel } from "@/src/features/generation/GenerationQueuePanel";
 import { KeyframeWorkspace, type StudioMode } from "@/src/features/generation/KeyframeWorkspace";
+import { VideoGenerationWorkspace } from "@/src/features/generation/VideoGenerationWorkspace";
 import { VisualLibraryPanel } from "@/src/features/library/VisualLibraryPanel";
 import { DirectorStoryboardPanel } from "@/src/features/planning/DirectorStoryboardPanel";
 import { ProjectForm } from "./ProjectForm";
@@ -153,6 +155,8 @@ export function ProjectStudio() {
         <VisualLibraryPanel onChanged={setVisualLibrary} />
         <DirectorStoryboardPanel projectId={editor.id} visualLibrary={visualLibrary} />
         <KeyframeWorkspace projectId={editor.id} mode={mode} />
+        <VideoGenerationWorkspace projectId={editor.id} mode={mode} />
+        <GenerationQueuePanel projectId={editor.id} mode={mode} />
       </section>
     </main>
   );
