@@ -45,7 +45,8 @@ public sealed class ProjectSongTests : IClassFixture<TestApplicationFactory>
             ApiJsonOptions);
         Assert.NotNull(afterFirstUpload);
         var firstSongReference = Assert.Single(
-            afterFirstUpload.References.Where(reference => reference.Kind == ProjectReferenceKind.Song));
+            afterFirstUpload.References,
+            reference => reference.Kind == ProjectReferenceKind.Song);
         Assert.Equal(first.AssetId, firstSongReference.ReferenceId);
 
         var second = await UploadAsync(client, created.Id, "second.wav", "audio/wav", [6, 7, 8]);
@@ -56,7 +57,8 @@ public sealed class ProjectSongTests : IClassFixture<TestApplicationFactory>
             ApiJsonOptions);
         Assert.NotNull(afterSecondUpload);
         var secondSongReference = Assert.Single(
-            afterSecondUpload.References.Where(reference => reference.Kind == ProjectReferenceKind.Song));
+            afterSecondUpload.References,
+            reference => reference.Kind == ProjectReferenceKind.Song);
         Assert.Equal(second.AssetId, secondSongReference.ReferenceId);
 
         var mediaAssets = _factory.Services.GetRequiredService<IMediaAssetRepository>();

@@ -15,7 +15,7 @@
     "api:generate": "openapi-typescript http://localhost:5100/openapi/v1.json -o src/api/schema.d.ts"
   },
   "dependencies": {
-    "next": "16.0.0",
+    "next": "^16.3.0",
     "react": "19.2.0",
     "react-dom": "19.2.0"
   },

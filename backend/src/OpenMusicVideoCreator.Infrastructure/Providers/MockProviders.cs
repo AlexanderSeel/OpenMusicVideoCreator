@@ -71,7 +71,7 @@ public sealed class MockDirectorProvider : IDirectorProvider
         });
 
         return ProviderResult<DirectorResponse>.Success(
-            new DirectorResponse(planJson),
+            new DirectorResponse(planJson, [], []),
             providerTaskId: $"mock:{Guid.NewGuid():N}");
     }
 }

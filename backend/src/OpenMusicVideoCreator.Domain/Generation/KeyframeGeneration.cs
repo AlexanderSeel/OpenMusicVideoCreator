@@ -62,3 +62,30 @@ public sealed record SceneKeyframeSelection(
     Guid? StartVariantId,
     Guid? EndVariantId,
     DateTimeOffset UpdatedUtc);
+
+public sealed record SceneKeyframeApproval(
+    Guid ProjectId,
+    Guid SceneId,
+    Guid StartVariantId,
+    Guid? EndVariantId,
+    bool Approved,
+    DateTimeOffset ApprovedUtc)
+{
+    public void Validate()
+    {
+        if (ProjectId == Guid.Empty || SceneId == Guid.Empty || StartVariantId == Guid.Empty)
+        {
+            throw new ArgumentException("Keyframe approval identity and selected start variant are required.");
+        }
+
+        if (!Approved)
+        {
+            throw new ArgumentException("Persisted keyframe approvals must be approved.");
+        }
+
+        if (EndVariantId == StartVariantId)
+        {
+            throw new ArgumentException("Start and end keyframe variants must be distinct.");
+        }
+    }
+}

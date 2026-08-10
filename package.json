@@ -5,6 +5,11 @@
   "workspaces": [
     "frontend"
   ],
+  "overrides": {
+    "@redocly/openapi-core": {
+      "js-yaml": "4.3.1"
+    }
+  },
   "scripts": {
     "dev:web": "npm run dev --workspace frontend",
     "lint": "npm run lint --workspace frontend",

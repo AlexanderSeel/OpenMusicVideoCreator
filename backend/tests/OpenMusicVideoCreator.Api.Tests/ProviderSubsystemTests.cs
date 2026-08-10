@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenMusicVideoCreator.Api.Contracts.Providers;
 using OpenMusicVideoCreator.Application.Abstractions;
 using OpenMusicVideoCreator.Application.Providers;
+using OpenMusicVideoCreator.Domain.Planning;
 using OpenMusicVideoCreator.Infrastructure.Providers;
 using Xunit;
 
@@ -146,8 +147,21 @@ public sealed class ProviderSubsystemTests : IClassFixture<TestApplicationFactor
                 new MockProviderBehavior(MockProviderScenario.DelayedSuccess, TimeSpan.FromMilliseconds(1)));
             var directorResult = await director.PlanAsync(new DirectorRequest(
                 "mock-director-v1",
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                TimeSpan.FromMinutes(3),
+                "",
                 "plan this song",
-                TimeSpan.FromMinutes(3)));
+                "",
+                "",
+                "",
+                "",
+                DirectorControls.Balanced,
+                [],
+                [],
+                [],
+                [],
+                []));
             Assert.True(directorResult.IsSuccess);
             Assert.NotNull(directorResult.Value);
 

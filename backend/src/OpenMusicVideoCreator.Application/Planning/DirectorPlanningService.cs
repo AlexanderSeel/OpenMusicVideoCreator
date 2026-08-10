@@ -2,6 +2,7 @@ using OpenMusicVideoCreator.Application.Abstractions;
 using OpenMusicVideoCreator.Application.Analysis;
 using OpenMusicVideoCreator.Application.Library;
 using OpenMusicVideoCreator.Application.Providers;
+using OpenMusicVideoCreator.Domain.Analysis;
 using OpenMusicVideoCreator.Domain.Library;
 using OpenMusicVideoCreator.Domain.Planning;
 using OpenMusicVideoCreator.Domain.Projects;

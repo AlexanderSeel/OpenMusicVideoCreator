@@ -22,15 +22,19 @@ No paid-provider credentials are required for the baseline/mock test plan.
 ## Baseline repository gates
 
 - [ ] Record `node --version`, `npm --version`, `dotnet --version`, `ffmpeg -version`, and `ffprobe -version`.
-- [ ] `npm install`
-- [ ] `dotnet restore backend/OpenMusicVideoCreator.sln`
+- [x] `npm install`
+- [x] `dotnet restore backend/OpenMusicVideoCreator.sln`
 - [ ] `npm run lint`
 - [ ] `npm run typecheck`
+  - 2026-08-10: fails because `DirectorStoryboardPanel.tsx` and `SceneReferenceEditor.tsx` import planning/storyboard client exports that are not currently present in `src/api/client`.
 - [ ] `npm run test:frontend`
 - [ ] `npm run build:frontend`
-- [ ] `dotnet build backend/OpenMusicVideoCreator.sln -c Release`
+- [x] `dotnet build backend/OpenMusicVideoCreator.sln -c Release`
 - [ ] `dotnet test backend/OpenMusicVideoCreator.sln -c Release`
+  - 2026-08-10: 38/44 API tests pass. Failures: concurrent DuckDB initialization conflicts on `schema_migrations` (four tests), a planning scene-boundary expectation, and visual-library collection round-trip equality.
 - [ ] `./scripts/validate.sh` on Linux/macOS or `./scripts/validate.ps1` on Windows/PowerShell.
+- [ ] `./scripts/run.ps1 -NoBrowser` starts the backend and frontend, serves `/healthz` and `http://localhost:3000`, and stops both processes with Ctrl+C.
+- [x] `npm audit` reports no known vulnerabilities.
 
 ## Block 1 — Foundation
 

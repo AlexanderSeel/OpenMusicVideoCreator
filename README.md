@@ -60,6 +60,14 @@ dotnet restore backend/OpenMusicVideoCreator.sln
 
 ## Run locally
 
+Start the complete development app (backend + frontend):
+
+```powershell
+./scripts/run.ps1
+```
+
+The script opens `http://localhost:3000` once both services are ready. Press `Ctrl+C` to stop them. Use `-NoBrowser` to leave the browser closed, or pass `-BackendUrl` and `-FrontendPort` to choose different local ports.
+
 Backend:
 
 ```bash
