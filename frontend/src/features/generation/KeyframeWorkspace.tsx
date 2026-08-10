@@ -20,8 +20,11 @@ import {
   type KeyframeVariantResponse,
 } from "@/src/api/keyframes";
 
+export type StudioMode = "Simple" | "Advanced" | "Custom";
+
 interface KeyframeWorkspaceProps {
   projectId?: string;
+  mode: StudioMode;
 }
 
 type ProviderCatalog = Awaited<ReturnType<typeof getProviderCatalog>>;
@@ -30,7 +33,7 @@ type ProviderModel = Provider["models"][number];
 
 const activeStates = new Set(["Planned", "Queued", "Generating"]);
 
-export function KeyframeWorkspace({ projectId }: KeyframeWorkspaceProps) {
+export function KeyframeWorkspace({ projectId, mode }: KeyframeWorkspaceProps) {
   const [storyboard, setStoryboard] = useState<StoryboardResponse | null>(null);
   const [sceneId, setSceneId] = useState("");
   const [variants, setVariants] = useState<KeyframeVariantResponse[]>([]);
@@ -39,6 +42,7 @@ export function KeyframeWorkspace({ projectId }: KeyframeWorkspaceProps) {
   const [providers, setProviders] = useState<ProviderCatalog>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const showAdvancedSettings = mode !== "Simple";
 
   const loadStoryboard = useCallback(async (signal?: AbortSignal) => {
     if (!projectId) {
@@ -143,7 +147,7 @@ export function KeyframeWorkspace({ projectId }: KeyframeWorkspaceProps) {
   }
 
   async function saveSettings() {
-    if (!projectId || !sceneId || !settings) return;
+    if (!projectId || !sceneId || !settings || !showAdvancedSettings) return;
     await mutate(async () => {
       const request: KeyframeGenerationSettingsRequest = {
         providerId: settings.providerId,
@@ -163,7 +167,7 @@ export function KeyframeWorkspace({ projectId }: KeyframeWorkspaceProps) {
   }
 
   function chooseProvider(providerId: string) {
-    if (!settings) return;
+    if (!settings || !showAdvancedSettings) return;
     if (!providerId) {
       patchSettings({ providerId: null, modelId: null, resolution: null, seed: null, negativePrompt: null });
       return;
@@ -180,6 +184,7 @@ export function KeyframeWorkspace({ projectId }: KeyframeWorkspaceProps) {
   }
 
   function chooseModel(modelId: string) {
+    if (!showAdvancedSettings) return;
     const model = selectedProvider?.models.find((candidate) => candidate.modelId === modelId) ?? null;
     patchSettings({
       modelId: model?.modelId ?? null,
@@ -208,7 +213,7 @@ export function KeyframeWorkspace({ projectId }: KeyframeWorkspaceProps) {
             <button className="button button-primary" type="button" disabled={busy || !sceneId} onClick={() => void queue()}>{busy ? "Working…" : settings?.generateEndFrame ? "Generate start + end" : "Generate start keyframe"}</button>
           </div>
 
-          {settings ? (
+          {settings && showAdvancedSettings ? (
             <details className="keyframe-settings">
               <summary>Advanced / Custom generation settings</summary>
               <div className="keyframe-settings-grid">
@@ -222,16 +227,18 @@ export function KeyframeWorkspace({ projectId }: KeyframeWorkspaceProps) {
               <div className="keyframe-settings-note">Reference support: {selectedModel ? selectedModel.supportsReferences ? `up to ${selectedModel.maxReferences} attached library references` : "not supported by this model" : "resolved automatically by provider capability"}.</div>
               <button className="button" type="button" disabled={busy} onClick={() => void saveSettings()}>Save scene settings</button>
             </details>
+          ) : mode === "Simple" ? (
+            <div className="keyframe-simple-note">Simple Mode uses automatic provider/model routing and hides seed, negative-prompt, and provider-specific controls. Switch to Advanced or Custom to edit per-scene generation settings.</div>
           ) : null}
 
           <div className="keyframe-role-section">
             <div className="structure-heading"><div><strong>Start keyframes</strong><span>Regeneration appends a new variant; the selected successful variant remains intact.</span></div><button className="button" type="button" disabled={busy} onClick={() => void queue("Start")}>Regenerate start</button></div>
-            <VariantGrid variants={startVariants} projectId={projectId} sceneId={sceneId} busy={busy} onSelect={(id) => mutate(async () => { await selectKeyframeVariant(projectId, sceneId, id); setApproval(await getKeyframeApproval(projectId, sceneId)); })} onDelete={(id) => mutate(async () => { await deleteKeyframeVariant(projectId, sceneId, id); })} />
+            <VariantGrid variants={startVariants} projectId={projectId} sceneId={sceneId} busy={busy} showProviderDetails={showAdvancedSettings} onSelect={(id) => mutate(async () => { await selectKeyframeVariant(projectId, sceneId, id); setApproval(await getKeyframeApproval(projectId, sceneId)); })} onDelete={(id) => mutate(async () => { await deleteKeyframeVariant(projectId, sceneId, id); })} />
           </div>
 
           <div className="keyframe-role-section">
             <div className="structure-heading"><div><strong>End keyframes</strong><span>Optional end frames can guide later image-to-video generation when supported.</span></div><button className="button" type="button" disabled={busy} onClick={() => void queue("End")}>Generate / regenerate end</button></div>
-            <VariantGrid variants={endVariants} projectId={projectId} sceneId={sceneId} busy={busy} onSelect={(id) => mutate(async () => { await selectKeyframeVariant(projectId, sceneId, id); setApproval(await getKeyframeApproval(projectId, sceneId)); })} onDelete={(id) => mutate(async () => { await deleteKeyframeVariant(projectId, sceneId, id); })} />
+            <VariantGrid variants={endVariants} projectId={projectId} sceneId={sceneId} busy={busy} showProviderDetails={showAdvancedSettings} onSelect={(id) => mutate(async () => { await selectKeyframeVariant(projectId, sceneId, id); setApproval(await getKeyframeApproval(projectId, sceneId)); })} onDelete={(id) => mutate(async () => { await deleteKeyframeVariant(projectId, sceneId, id); })} />
           </div>
 
           <div className={`keyframe-approval ${approval?.isApproved ? "is-approved" : ""}`}>
@@ -244,14 +251,14 @@ export function KeyframeWorkspace({ projectId }: KeyframeWorkspaceProps) {
   );
 }
 
-function VariantGrid({ variants, projectId, sceneId, busy, onSelect, onDelete }: { variants: KeyframeVariantResponse[]; projectId: string; sceneId: string; busy: boolean; onSelect: (id: string) => void; onDelete: (id: string) => void }) {
+function VariantGrid({ variants, projectId, sceneId, busy, showProviderDetails, onSelect, onDelete }: { variants: KeyframeVariantResponse[]; projectId: string; sceneId: string; busy: boolean; showProviderDetails: boolean; onSelect: (id: string) => void; onDelete: (id: string) => void }) {
   if (variants.length === 0) return <div className="keyframe-empty-grid">No variants yet.</div>;
   return (
     <div className="keyframe-variant-grid">
       {variants.map((variant) => (
         <article className={`keyframe-variant ${variant.isSelected ? "is-selected" : ""}`} key={variant.id}>
           <div className="keyframe-preview" role="img" aria-label={`${variant.role} keyframe variant ${variant.variantNumber}`} style={variant.state === "Completed" ? { backgroundImage: `url("${getKeyframePreviewUrl(projectId, sceneId, variant.id)}")` } : undefined}><span>{variant.state}</span></div>
-          <div className="keyframe-variant-meta"><div><strong>Variant {variant.variantNumber}</strong>{variant.isSelected ? <em>Selected</em> : null}</div><span>{variant.providerId ?? "auto"} · {variant.modelId ?? "model pending"}</span><span>Prompt {variant.promptVersionId.slice(0, 8)} · {formatCost(variant)}</span></div>
+          <div className="keyframe-variant-meta"><div><strong>Variant {variant.variantNumber}</strong>{variant.isSelected ? <em>Selected</em> : null}</div>{showProviderDetails ? <span>{variant.providerId ?? "auto"} · {variant.modelId ?? "model pending"}</span> : <span>Automatic generation · provider details hidden in Simple Mode</span>}<span>{showProviderDetails ? `Prompt ${variant.promptVersionId.slice(0, 8)} · ` : "Prompt provenance stored · "}{formatCost(variant)}</span></div>
           <div className="keyframe-variant-actions"><button className="button" type="button" disabled={busy || variant.state !== "Completed" || variant.isSelected} onClick={() => onSelect(variant.id)}>Select</button><button className="button button-danger" type="button" disabled={busy || variant.isSelected} onClick={() => onDelete(variant.id)}>Delete</button></div>
         </article>
       ))}
