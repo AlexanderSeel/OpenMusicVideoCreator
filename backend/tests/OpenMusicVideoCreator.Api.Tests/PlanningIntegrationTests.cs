@@ -55,6 +55,18 @@ public sealed class PlanningIntegrationTests
         var durations = result.Value.Scenes.Select(scene => Math.Round(scene.EndSeconds - scene.StartSeconds, 2)).Distinct().ToArray();
         Assert.True(durations.Length > 1);
         Assert.Contains(result.Value.Scenes, scene => Math.Abs(scene.StartSeconds - 58) < 0.15 || Math.Abs(scene.EndSeconds - 58) < 0.15);
+        Assert.All(result.Value.Scenes, scene =>
+        {
+            Assert.NotNull(scene.Details);
+            Assert.False(string.IsNullOrWhiteSpace(scene.Details!.SongSection));
+            Assert.False(string.IsNullOrWhiteSpace(scene.Details.Purpose));
+            Assert.False(string.IsNullOrWhiteSpace(scene.Details.Emotion));
+            Assert.False(string.IsNullOrWhiteSpace(scene.Details.Composition));
+            Assert.False(string.IsNullOrWhiteSpace(scene.Details.Lighting));
+            Assert.False(string.IsNullOrWhiteSpace(scene.Details.EnvironmentMotion));
+            Assert.False(string.IsNullOrWhiteSpace(scene.Details.VisualSymbolism));
+            Assert.False(string.IsNullOrWhiteSpace(scene.Details.ContinuityRequirements));
+        });
     }
 
     [Fact]
@@ -93,13 +105,23 @@ public sealed class PlanningIntegrationTests
             "Keep the character emotionally restrained.",
             "Intent: Keep the character emotionally restrained.\nCamera: close and still.",
             FixedUtc());
+        var details = new StoryboardSceneDetails(
+            "Verse",
+            "A line of lyrics",
+            "Advance the emotional beat.",
+            "Restrained longing.",
+            "Close layered composition.",
+            "Soft low-key lighting.",
+            "Slow rain and distant traffic.",
+            "Reflections imply emotional distance.",
+            "Preserve wardrobe and weather continuity.");
         var storyboard = new StoryboardVersion(
             storyboardId,
             projectId,
             analysisId,
             arc.Id,
             1,
-            [new StoryboardScene(sceneId, 1, 0, 180, "Single scene", prompt.DirectorIntent, "Wait", "Station", "Locked", "Cut", [], [], [], prompt.Id)],
+            [new StoryboardScene(sceneId, 1, 0, 180, "Single scene", prompt.DirectorIntent, "Wait", "Station", "Locked", "Cut", [], [], [], prompt.Id, details)],
             FixedUtc());
 
         await ((IVisualArcRepository)first).UpsertAsync(arc);
@@ -116,6 +138,7 @@ public sealed class PlanningIntegrationTests
         Assert.NotNull(restoredStoryboard);
         Assert.Equal(arc.Id, restoredArc.Id);
         Assert.Equal(storyboard.Id, restoredStoryboard.Id);
+        Assert.Equal(details, restoredStoryboard.Scenes[0].Details);
         Assert.Single(restoredPrompts);
         Assert.Equal(prompt.Id, restoredPrompts[0].Id);
         Assert.Equal(storyboardId, restoredPrompts[0].StoryboardVersionId);
