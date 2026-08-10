@@ -154,22 +154,25 @@ Execution proof is tracked in `TESTPLAN.md`.
 
 ## Block 8 — AI Director, Visual Arc, storyboard, and prompt history
 
-- [ ] Director input contract combines song analysis, lyrics, storyline, styles, characters, and locations.
-- [ ] Director controls for literal↔symbolic, narrative strength, abstraction, emotion, darkness/warmth, surrealism/realism, complexity, acting, and camera energy.
-- [ ] Generate and persist editable Visual Arc.
-- [ ] Generate storyboard scene boundaries aligned preferentially to musical structure.
-- [ ] Implement full scene model and visual storyboard cards.
-- [ ] Implement scene editing/reordering within timing constraints.
-- [ ] Implement Director Intent vs Final Provider Prompt.
-- [ ] Implement prompt templates, prompt versioning, regeneration, and prompt-to-generation provenance.
-- [ ] Validate structured AI outputs against application schemas.
+- [x] Director input contract combines song analysis, lyrics, storyline, styles, characters, and locations.
+- [x] Director controls for literal↔symbolic, narrative strength, abstraction, emotion, darkness/warmth, surrealism/realism, complexity, acting, and camera energy.
+- [x] Generate and persist editable Visual Arc.
+- [x] Generate storyboard scene boundaries aligned preferentially to musical structure.
+- [x] Implement full scene model and visual storyboard cards, including song section/lyric, purpose, emotion, composition, lighting, environment motion, symbolism, continuity, and reusable visual references.
+- [x] Implement scene editing/reordering within timing constraints.
+- [x] Implement Director Intent vs Final Provider Prompt.
+- [x] Implement prompt templates, prompt versioning, regeneration, and prompt-to-generation provenance.
+- [x] Validate structured AI outputs against application schemas.
 
-### Acceptance
+### Acceptance implementation
 
-- [ ] Mock Director generates an editable Visual Arc and approximately appropriate scene count for a typical 3-minute song without rigid equal slicing.
-- [ ] User can change one scene without rebuilding the entire storyboard.
-- [ ] Every prompt revision remains recoverable and attributable to generated assets.
-- [ ] Storyboard and prompt history survive restart.
+- [x] Mock Director generates an editable Visual Arc and approximately appropriate scene count for a typical 3-minute song without rigid equal slicing.
+- [x] User can change one scene without rebuilding the entire storyboard; that edit creates a new storyboard/prompt version.
+- [x] Every prompt revision remains recoverable and attributable through immutable prompt IDs used by downstream keyframe variants.
+- [x] Storyboard, structured scene details, and prompt history use durable project settings and survive repository recreation/restart.
+- [x] Scene edit/reorder/prompt regeneration preserve the storyboard's exact song-analysis and Visual-Arc provenance rather than silently rebasing to newer analysis.
+
+Execution proof is tracked in `TESTPLAN.md`.
 
 ---
 
