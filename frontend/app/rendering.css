@@ -1,0 +1,36 @@
+.render-workspace {
+  max-width: 1120px;
+  margin: 1rem auto 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  padding: 1.1rem;
+  box-shadow: var(--shadow);
+}
+
+.render-empty { color: var(--text-soft); }
+.render-actions { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
+.render-actions p { flex: 1 1 28rem; margin: 0; color: var(--text-soft); font-size: .9rem; }
+.render-history { display: grid; gap: .75rem; }
+.render-empty-state { color: var(--text-muted); border: 1px dashed var(--line); border-radius: var(--radius); padding: 1rem; margin: 0; }
+.render-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-soft); padding: .9rem; }
+.render-card-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.render-card-heading div { display: grid; gap: .2rem; }
+.render-card-heading span { color: var(--text-soft); font-size: .86rem; }
+.render-state { border: 1px solid var(--line-strong); border-radius: 999px; padding: .25rem .55rem; font-size: .75rem !important; color: var(--text) !important; }
+.state-completed { border-color: color-mix(in srgb, var(--success) 55%, transparent); }
+.state-failed { border-color: color-mix(in srgb, var(--danger) 55%, transparent); }
+.state-rendering, .state-queued { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.render-provenance { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin: .8rem 0; }
+.render-provenance div { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: .55rem; min-width: 0; }
+.render-provenance dt { color: var(--text-muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; }
+.render-provenance dd { margin: .2rem 0 0; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; }
+.render-error { color: var(--danger); }
+.render-card details { margin-top: .75rem; }
+.render-card summary { cursor: pointer; color: var(--text-soft); }
+.render-card pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border-radius: var(--radius-sm); padding: .7rem; color: var(--text-soft); font-size: .75rem; }
+
+@media (max-width: 760px) {
+  .render-provenance { grid-template-columns: 1fr; }
+  .render-card-heading { flex-direction: column; }
+}
