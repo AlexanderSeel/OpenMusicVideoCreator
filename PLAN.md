@@ -222,21 +222,23 @@ Execution proof for the mock path is tracked in `TESTPLAN.md`; the real-provider
 
 ## Block 11 — Deterministic assembly, preview render, and initial export
 
-- [ ] FFmpeg/ffprobe wrapper with typed operations and safe argument handling.
-- [ ] Assemble selected scene variants in timeline order.
-- [ ] Preserve exact original uploaded song as final audio unless explicitly changed.
-- [ ] Implement clip timing, trim, scale/crop, fades/cuts/basic transitions, overlays, and subtitles needed by MVP.
-- [ ] Fast proxy/preview render and final H.264 MP4 1080p render.
-- [ ] Support 16:9, 9:16, and 1:1 outputs with reuse where possible.
-- [ ] Persist render jobs, logs, outputs, and export history.
-- [ ] Add render cancellation/retry and deterministic command/provenance logging.
+- [x] FFmpeg render wrapper uses typed `ProcessStartInfo.ArgumentList` operations and the existing safe media path resolver.
+- [x] Assemble selected completed scene clip variants in storyboard timeline order.
+- [x] Preserve the project’s original uploaded `Song` media asset as the only render audio source unless explicitly changed by a later editor feature.
+- [ ] Implement clip timing, trim, scale/crop, fades/cuts/basic transitions, overlays, and subtitles needed by MVP. Timing/trim/scale/crop/hard-cut assembly is implemented; richer transitions/overlays/subtitles remain.
+- [x] Fast lower-resolution preview profile and final H.264 MP4 profile are implemented as asynchronous persistent render jobs.
+- [x] Support project-configured 16:9, 9:16, and 1:1 output resolutions while reusing one immutable timeline manifest/hash.
+- [x] Persist render jobs, deterministic manifests, command logs, outputs, versions, and export/download history without overwriting earlier renders.
+- [ ] Add render-specific cancellation/retry state synchronization and complete deterministic command/provenance logging across cancelled/retried attempts. Generic job controls already exist.
 
-### Acceptance
+### Acceptance implementation
 
-- [ ] Offline mock project can run Song → Analysis → Storyboard → Keyframes → Clips → Final MP4.
-- [ ] Final duration and audio synchronization are validated with ffprobe.
-- [ ] Preview render is lower-cost/faster than final render and uses the same timeline decisions.
-- [ ] Render restart/failure does not corrupt source/generated assets.
+- [x] Repository code exposes the offline/mock path Song → Analysis → Storyboard → Keyframes → Clips → asynchronous Preview/Final MP4 render and download.
+- [ ] Final duration and audio synchronization are validated with ffprobe after rendering.
+- [x] Preview uses a smaller/faster encoding profile while retaining the exact same storyboard/song/selected-clip timeline hash as Final.
+- [x] Rendering treats source/generated media as read-only, writes temporary/output files separately, and persists a new render/output version only after successful assembly.
+
+Execution proof is tracked in `TESTPLAN.md`; FFmpeg execution and post-render ffprobe validation have not been claimed.
 
 ---
 
