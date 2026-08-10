@@ -14,7 +14,7 @@ import {
   type VisualLibraryResponse,
 } from "@/src/api/client";
 import { SongAnalysisPanel } from "@/src/features/analysis/SongAnalysisPanel";
-import { KeyframeWorkspace } from "@/src/features/generation/KeyframeWorkspace";
+import { KeyframeWorkspace, type StudioMode } from "@/src/features/generation/KeyframeWorkspace";
 import { VisualLibraryPanel } from "@/src/features/library/VisualLibraryPanel";
 import { DirectorStoryboardPanel } from "@/src/features/planning/DirectorStoryboardPanel";
 import { ProjectForm } from "./ProjectForm";
@@ -34,6 +34,7 @@ export function ProjectStudio() {
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [online, setOnline] = useState(true);
+  const [mode, setMode] = useState<StudioMode>("Simple");
 
   async function openProject(project: ProjectResponse, signal?: AbortSignal) {
     setEditor(projectToEditor(project));
@@ -142,16 +143,16 @@ export function ProjectStudio() {
         </header>
 
         <div className="mode-tabs" role="tablist" aria-label="Editor mode">
-          <button role="tab" aria-selected="true" className="mode-tab is-active" type="button">Simple</button>
-          <button role="tab" aria-selected="false" className="mode-tab" type="button" disabled>Advanced <span>later</span></button>
-          <button role="tab" aria-selected="false" className="mode-tab" type="button" disabled>Expert / Custom <span>later</span></button>
+          {(["Simple", "Advanced", "Custom"] as StudioMode[]).map((candidate) => (
+            <button key={candidate} role="tab" aria-selected={mode === candidate} className={`mode-tab ${mode === candidate ? "is-active" : ""}`} type="button" onClick={() => setMode(candidate)}>{candidate === "Custom" ? "Expert / Custom" : candidate}{candidate !== "Simple" ? <span>generation</span> : null}</button>
+          ))}
         </div>
 
         <ProjectForm editor={editor} selectedSong={selectedSong} song={song} visualLibrary={visualLibrary} online={online} saving={saving} message={message} onFieldChange={setField} onSongSelected={setSelectedSong} onSubmit={save} onDelete={() => void removeCurrentProject()} />
         <SongAnalysisPanel projectId={editor.id} songAttached={song !== null} lyrics={editor.lyrics} />
         <VisualLibraryPanel onChanged={setVisualLibrary} />
         <DirectorStoryboardPanel projectId={editor.id} visualLibrary={visualLibrary} />
-        <KeyframeWorkspace projectId={editor.id} />
+        <KeyframeWorkspace projectId={editor.id} mode={mode} />
       </section>
     </main>
   );
