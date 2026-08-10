@@ -75,11 +75,24 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
                 "Render job provenance does not match its persisted render record.",
                 Retryable: false));
         }
+        if (render.State == ProjectRenderState.Cancelled)
+        {
+            return new JobExecutionResult(JobState.Cancelled);
+        }
 
-        await _renders.MarkRenderingAsync(projectId, render.Id, cancellationToken);
+        render = await _renders.MarkRenderingAsync(projectId, render.Id, cancellationToken);
+        if (render.State == ProjectRenderState.Cancelled)
+        {
+            return new JobExecutionResult(JobState.Cancelled);
+        }
+
+        MediaLocation? storedLocation = null;
+        Guid? outputMediaId = null;
         try
         {
             await using var result = await _engine.RenderAsync(render.Manifest, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
             var area = render.Manifest.Kind == ProjectRenderKind.Preview ? MediaStorageArea.Proxy : MediaStorageArea.Render;
             var fileName = $"render-v{render.Version}-{render.Manifest.Kind.ToString().ToLowerInvariant()}.mp4";
             var stored = await _mediaStorage.SaveAsync(
@@ -88,22 +101,15 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
                 result.Content,
                 fileName,
                 cancellationToken);
+            storedLocation = stored.Location;
 
-            MediaProbeResult probe;
-            try
-            {
-                probe = await _mediaProbe.ProbeAsync(stored.Location, cancellationToken);
-                ValidateProbe(render.Manifest, probe);
-            }
-            catch
-            {
-                await _mediaStorage.DeleteAsync(stored.Location, CancellationToken.None);
-                throw;
-            }
+            var probe = await _mediaProbe.ProbeAsync(stored.Location, cancellationToken);
+            ValidateProbe(render.Manifest, probe);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var mediaId = Guid.NewGuid();
+            outputMediaId = Guid.NewGuid();
             await _mediaAssets.UpsertAsync(new MediaAssetMetadata(
-                mediaId,
+                outputMediaId.Value,
                 projectId,
                 stored.Location.Value,
                 stored.ChecksumSha256,
@@ -114,15 +120,21 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
                 stored.FileSize,
                 MediaCreationSource.Rendered,
                 GetUtcNow()), cancellationToken);
-            await _renders.CompleteAsync(projectId, render.Id, mediaId, result.CommandLog, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await _renders.CompleteAsync(projectId, render.Id, outputMediaId.Value, result.CommandLog, cancellationToken);
+            storedLocation = null;
+            outputMediaId = null;
             return JobExecutionResult.Completed(actualCost: 0m, currency: "USD");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            await CleanupOutputAsync(storedLocation, outputMediaId);
             throw;
         }
         catch (FileNotFoundException exception)
         {
+            await CleanupOutputAsync(storedLocation, outputMediaId);
             await _renders.FailAsync(projectId, render.Id, exception.Message, null, cancellationToken);
             return JobExecutionResult.Failed(new ProviderFailure(
                 ProviderFailureCode.InvalidParameters,
@@ -132,6 +144,7 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
         }
         catch (InvalidDataException exception)
         {
+            await CleanupOutputAsync(storedLocation, outputMediaId);
             await _renders.FailAsync(projectId, render.Id, exception.Message, null, cancellationToken);
             return JobExecutionResult.Failed(new ProviderFailure(
                 ProviderFailureCode.PermanentFailure,
@@ -141,6 +154,7 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
         }
         catch (Exception exception)
         {
+            await CleanupOutputAsync(storedLocation, outputMediaId);
             var message = $"Project rendering failed: {exception.Message}";
             if (job.RetryCount < job.MaxRetries)
             {
@@ -156,6 +170,33 @@ public sealed class ProjectRenderJobExecutionDispatcher : IJobExecutionDispatche
                 message,
                 Retryable: true,
                 ProviderCode: "render_transient"));
+        }
+    }
+
+    private async Task CleanupOutputAsync(MediaLocation? storedLocation, Guid? mediaId)
+    {
+        if (mediaId is Guid id)
+        {
+            try
+            {
+                await _mediaAssets.DeleteAsync(id, CancellationToken.None);
+            }
+            catch
+            {
+                // Best effort: original exception/cancellation remains authoritative.
+            }
+        }
+
+        if (storedLocation is MediaLocation location)
+        {
+            try
+            {
+                await _mediaStorage.DeleteAsync(location, CancellationToken.None);
+            }
+            catch
+            {
+                // Best effort: source/generated media is never touched by this cleanup.
+            }
         }
     }
 
