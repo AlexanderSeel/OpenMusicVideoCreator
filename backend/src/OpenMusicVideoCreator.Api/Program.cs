@@ -128,6 +128,12 @@ builder.Services.AddSingleton<KeyframeVariantService>();
 builder.Services.AddSingleton<KeyframeApprovalService>();
 builder.Services.AddSingleton<KeyframeGenerationCoordinator>();
 
+builder.Services.AddSingleton<IClipVariantRepository, DuckDbClipVariantRepository>();
+builder.Services.AddSingleton<IVideoGenerationSettingsRepository, DuckDbVideoGenerationSettingsRepository>();
+builder.Services.AddSingleton<IImageToVideoProviderResolver, ImageToVideoProviderResolver>();
+builder.Services.AddSingleton<ClipVariantService>();
+builder.Services.AddSingleton<VideoGenerationCoordinator>();
+
 builder.Services.AddSingleton<IJobRepository, DuckDbJobRepository>();
 builder.Services.AddSingleton<JobChangeHub>();
 builder.Services.AddSingleton<IJobChangePublisher>(services => services.GetRequiredService<JobChangeHub>());
@@ -135,7 +141,8 @@ builder.Services.AddSingleton<IJobChangeStream>(services => services.GetRequired
 builder.Services.AddSingleton<JobService>();
 builder.Services.AddSingleton<IJobQueue>(services => services.GetRequiredService<JobService>());
 builder.Services.AddSingleton<MockJobExecutionDispatcher>();
-builder.Services.AddSingleton<IJobExecutionDispatcher, GenerationJobExecutionDispatcher>();
+builder.Services.AddSingleton<GenerationJobExecutionDispatcher>();
+builder.Services.AddSingleton<IJobExecutionDispatcher, VideoGenerationJobExecutionDispatcher>();
 builder.Services.AddSingleton<JobProcessor>();
 if (builder.Configuration.GetValue("Jobs:WorkerEnabled", true))
 {
@@ -174,6 +181,7 @@ app.MapSongAnalysisEndpoints();
 app.MapLibraryEndpoints();
 app.MapPlanningEndpoints();
 app.MapKeyframeEndpoints();
+app.MapClipEndpoints();
 app.MapProviderEndpoints();
 app.MapJobEndpoints();
 
