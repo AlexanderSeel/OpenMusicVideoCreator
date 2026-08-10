@@ -13,6 +13,7 @@ using OpenMusicVideoCreator.Application.Planning;
 using OpenMusicVideoCreator.Application.Projects;
 using OpenMusicVideoCreator.Application.Providers;
 using OpenMusicVideoCreator.Application.SystemInfo;
+using OpenMusicVideoCreator.Infrastructure.Generation;
 using OpenMusicVideoCreator.Infrastructure.Jobs;
 using OpenMusicVideoCreator.Infrastructure.Media;
 using OpenMusicVideoCreator.Infrastructure.Persistence;
@@ -41,6 +42,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 builder.Services.AddOpenApi();
+builder.Services.AddHttpClient();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
@@ -120,8 +122,11 @@ builder.Services.AddSingleton<DirectorPlanningService>();
 
 builder.Services.AddSingleton<IKeyframeVariantRepository, DuckDbKeyframeVariantRepository>();
 builder.Services.AddSingleton<IKeyframeApprovalRepository, DuckDbKeyframeApprovalRepository>();
+builder.Services.AddSingleton<IKeyframeGenerationSettingsRepository, DuckDbKeyframeGenerationSettingsRepository>();
+builder.Services.AddSingleton<IImageGenerationProviderResolver, ImageGenerationProviderResolver>();
 builder.Services.AddSingleton<KeyframeVariantService>();
 builder.Services.AddSingleton<KeyframeApprovalService>();
+builder.Services.AddSingleton<KeyframeGenerationCoordinator>();
 
 builder.Services.AddSingleton<IJobRepository, DuckDbJobRepository>();
 builder.Services.AddSingleton<JobChangeHub>();
@@ -129,7 +134,8 @@ builder.Services.AddSingleton<IJobChangePublisher>(services => services.GetRequi
 builder.Services.AddSingleton<IJobChangeStream>(services => services.GetRequiredService<JobChangeHub>());
 builder.Services.AddSingleton<JobService>();
 builder.Services.AddSingleton<IJobQueue>(services => services.GetRequiredService<JobService>());
-builder.Services.AddSingleton<IJobExecutionDispatcher, MockJobExecutionDispatcher>();
+builder.Services.AddSingleton<MockJobExecutionDispatcher>();
+builder.Services.AddSingleton<IJobExecutionDispatcher, GenerationJobExecutionDispatcher>();
 builder.Services.AddSingleton<JobProcessor>();
 if (builder.Configuration.GetValue("Jobs:WorkerEnabled", true))
 {
