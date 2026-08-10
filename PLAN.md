@@ -225,20 +225,21 @@ Execution proof for the mock path is tracked in `TESTPLAN.md`; the real-provider
 - [x] FFmpeg render wrapper uses typed `ProcessStartInfo.ArgumentList` operations and the existing safe media path resolver.
 - [x] Assemble selected completed scene clip variants in storyboard timeline order.
 - [x] Preserve the project’s original uploaded `Song` media asset as the only render audio source unless explicitly changed by a later editor feature.
-- [ ] Implement clip timing, trim, scale/crop, fades/cuts/basic transitions, overlays, and subtitles needed by MVP. Timing/trim/scale/crop/hard-cut assembly is implemented; richer transitions/overlays/subtitles remain.
+- [ ] Implement clip timing, trim, scale/crop, fades/cuts/basic transitions, overlays, and subtitles needed by MVP. Current deterministic assembly covers timing, trim, short-clip padding, scale/crop, hard cuts, and basic fade-in; true crossfades, overlays, subtitles, and user-editable effect composition remain aligned with Block 12.
 - [x] Fast lower-resolution preview profile and final H.264 MP4 profile are implemented as asynchronous persistent render jobs.
 - [x] Support project-configured 16:9, 9:16, and 1:1 output resolutions while reusing one immutable timeline manifest/hash.
-- [x] Persist render jobs, deterministic manifests, command logs, outputs, versions, and export/download history without overwriting earlier renders.
-- [ ] Add render-specific cancellation/retry state synchronization and complete deterministic command/provenance logging across cancelled/retried attempts. Generic job controls already exist.
+- [x] Persist render jobs, deterministic manifests, command logs, outputs, versions, per-attempt history, and export/download history without overwriting earlier renders.
+- [x] Render cancellation/retry is synchronized with persistent jobs and render history; cancellation signals active local execution, retries preserve the exact manifest, and partial output/media metadata is cleaned up on cancellation/failure.
 
 ### Acceptance implementation
 
 - [x] Repository code exposes the offline/mock path Song → Analysis → Storyboard → Keyframes → Clips → asynchronous Preview/Final MP4 render and download.
-- [ ] Final duration and audio synchronization are validated with ffprobe after rendering.
+- [x] Completed render duration and audio-stream presence are validated through the ffprobe media adapter before output metadata/render state is published as successful.
 - [x] Preview uses a smaller/faster encoding profile while retaining the exact same storyboard/song/selected-clip timeline hash as Final.
-- [x] Rendering treats source/generated media as read-only, writes temporary/output files separately, and persists a new render/output version only after successful assembly.
+- [x] Rendering treats source/generated media as read-only, writes temporary/output files separately, and persists a new render/output version only after successful assembly/validation.
+- [x] Cancelling through render-specific or generic job/project APIs cannot promote stale local execution to a completed job; active execution receives cancellation and render history reconciles persisted cancellation.
 
-Execution proof is tracked in `TESTPLAN.md`; FFmpeg execution and post-render ffprobe validation have not been claimed.
+Execution proof is tracked in `TESTPLAN.md`; actual FFmpeg/ffprobe execution has not been claimed.
 
 ---
 
