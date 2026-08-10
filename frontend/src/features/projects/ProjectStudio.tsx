@@ -19,6 +19,7 @@ import { KeyframeWorkspace, type StudioMode } from "@/src/features/generation/Ke
 import { VideoGenerationWorkspace } from "@/src/features/generation/VideoGenerationWorkspace";
 import { VisualLibraryPanel } from "@/src/features/library/VisualLibraryPanel";
 import { DirectorStoryboardPanel } from "@/src/features/planning/DirectorStoryboardPanel";
+import { ProjectRenderWorkspace } from "@/src/features/rendering/ProjectRenderWorkspace";
 import { ProjectForm } from "./ProjectForm";
 import { ProjectSidebar } from "./ProjectSidebar";
 import { createEmptyProject, editorToRequest, projectToEditor, type EditorState } from "./projectModel";
@@ -157,6 +158,7 @@ export function ProjectStudio() {
         <KeyframeWorkspace projectId={editor.id} mode={mode} />
         <VideoGenerationWorkspace projectId={editor.id} mode={mode} />
         <GenerationQueuePanel projectId={editor.id} mode={mode} />
+        <ProjectRenderWorkspace projectId={editor.id} />
       </section>
     </main>
   );
