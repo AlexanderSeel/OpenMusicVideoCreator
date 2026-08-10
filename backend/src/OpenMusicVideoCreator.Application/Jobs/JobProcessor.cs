@@ -1,4 +1,5 @@
 using OpenMusicVideoCreator.Application.Providers;
+using OpenMusicVideoCreator.Domain.Jobs;
 
 namespace OpenMusicVideoCreator.Application.Jobs;
 
@@ -8,6 +9,7 @@ public sealed class JobProcessor
     private readonly JobService _jobService;
     private readonly IJobExecutionDispatcher _dispatcher;
     private readonly IJobChangePublisher _publisher;
+    private readonly IJobExecutionCancellationRegistry _executionCancellations;
     private readonly TimeProvider _timeProvider;
 
     public JobProcessor(
@@ -15,12 +17,14 @@ public sealed class JobProcessor
         JobService jobService,
         IJobExecutionDispatcher dispatcher,
         IJobChangePublisher publisher,
+        IJobExecutionCancellationRegistry executionCancellations,
         TimeProvider timeProvider)
     {
         _jobs = jobs;
         _jobService = jobService;
         _dispatcher = dispatcher;
         _publisher = publisher;
+        _executionCancellations = executionCancellations;
         _timeProvider = timeProvider;
     }
 
@@ -46,19 +50,34 @@ public sealed class JobProcessor
             return false;
         }
 
+        var executionToken = _executionCancellations.Register(claimed.Id, cancellationToken);
         await _publisher.PublishAsync(claimed.Id, cancellationToken);
 
         try
         {
-            var result = await _dispatcher.ExecuteAsync(claimed, cancellationToken);
+            var result = await _dispatcher.ExecuteAsync(claimed, executionToken);
+            if (await WasCancelledAsync(claimed.Id))
+            {
+                return true;
+            }
+
             await _jobService.ApplyExecutionResultAsync(claimed.Id, result, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
+        catch (OperationCanceledException) when (await WasCancelledAsync(claimed.Id))
+        {
+            // User cancellation is already persisted. Do not turn the cancelled local execution into a retry/failure.
+        }
         catch (Exception exception)
         {
+            if (await WasCancelledAsync(claimed.Id))
+            {
+                return true;
+            }
+
             await _jobService.ApplyProviderFailureAsync(
                 claimed.Id,
                 new ProviderFailure(
@@ -69,8 +88,18 @@ public sealed class JobProcessor
                     ProviderCode: "worker_exception"),
                 cancellationToken);
         }
+        finally
+        {
+            _executionCancellations.Unregister(claimed.Id);
+        }
 
         return true;
+    }
+
+    private async Task<bool> WasCancelledAsync(Guid jobId)
+    {
+        var current = await _jobs.GetAsync(jobId, CancellationToken.None);
+        return current?.State == JobState.Cancelled;
     }
 
     private DateTimeOffset GetUtcNow()
