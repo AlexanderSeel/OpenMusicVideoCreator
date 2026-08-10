@@ -339,7 +339,7 @@ public sealed class VideoGenerationCoordinator
         SceneVideoGenerationSettings settings,
         ProviderModelDescriptor model)
     {
-        var desired = settings.DurationSeconds ?? Math.Max(1, (int)Math.Round(scene.End.TotalSeconds - scene.Start.TotalSeconds));
+        var desired = settings.DurationSeconds ?? Math.Max(1, (int)Math.Round(scene.EndSeconds - scene.StartSeconds));
         if (model.SupportedDurationsSeconds.Count == 0) return TimeSpan.FromSeconds(desired);
         var resolved = model.SupportedDurationsSeconds
             .OrderBy(candidate => Math.Abs(candidate - desired))
