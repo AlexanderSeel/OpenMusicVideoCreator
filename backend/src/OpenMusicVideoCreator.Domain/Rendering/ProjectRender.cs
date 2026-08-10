@@ -1,0 +1,120 @@
+namespace OpenMusicVideoCreator.Domain.Rendering;
+
+public enum ProjectRenderKind
+{
+    Preview,
+    Final,
+}
+
+public enum ProjectRenderState
+{
+    Planned,
+    Queued,
+    Rendering,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+public sealed record RenderTimelineClip(
+    Guid SceneId,
+    int Sequence,
+    Guid ClipVariantId,
+    Guid MediaAssetId,
+    double TimelineStartSeconds,
+    double DurationSeconds,
+    string TransitionIn)
+{
+    public void Validate()
+    {
+        if (SceneId == Guid.Empty || ClipVariantId == Guid.Empty || MediaAssetId == Guid.Empty || Sequence <= 0 ||
+            !double.IsFinite(TimelineStartSeconds) || TimelineStartSeconds < 0 ||
+            !double.IsFinite(DurationSeconds) || DurationSeconds <= 0)
+        {
+            throw new ArgumentException("Render timeline clip contains invalid identity or timing data.");
+        }
+    }
+}
+
+public sealed record ProjectRenderManifest(
+    Guid ProjectId,
+    Guid StoryboardVersionId,
+    Guid SongMediaAssetId,
+    ProjectRenderKind Kind,
+    int Width,
+    int Height,
+    int FramesPerSecond,
+    IReadOnlyList<RenderTimelineClip> Clips,
+    double DurationSeconds,
+    string TimelineSha256)
+{
+    public void Validate()
+    {
+        if (ProjectId == Guid.Empty || StoryboardVersionId == Guid.Empty || SongMediaAssetId == Guid.Empty ||
+            Width <= 0 || Height <= 0 || FramesPerSecond <= 0 ||
+            !double.IsFinite(DurationSeconds) || DurationSeconds <= 0 ||
+            string.IsNullOrWhiteSpace(TimelineSha256) || Clips.Count == 0)
+        {
+            throw new ArgumentException("Render manifest is incomplete.");
+        }
+
+        var ordered = Clips.OrderBy(clip => clip.Sequence).ToArray();
+        for (var index = 0; index < ordered.Length; index++)
+        {
+            var clip = ordered[index];
+            clip.Validate();
+            if (clip.Sequence != index + 1)
+            {
+                throw new ArgumentException("Render timeline clip sequence must be contiguous.");
+            }
+
+            if (index == 0 && Math.Abs(clip.TimelineStartSeconds) > 0.001)
+            {
+                throw new ArgumentException("Render timeline must begin at zero.");
+            }
+
+            if (index > 0)
+            {
+                var previousEnd = ordered[index - 1].TimelineStartSeconds + ordered[index - 1].DurationSeconds;
+                if (Math.Abs(previousEnd - clip.TimelineStartSeconds) > 0.002)
+                {
+                    throw new ArgumentException("Render timeline clips must be contiguous.");
+                }
+            }
+        }
+
+        var finalEnd = ordered[^1].TimelineStartSeconds + ordered[^1].DurationSeconds;
+        if (Math.Abs(finalEnd - DurationSeconds) > 0.002)
+        {
+            throw new ArgumentException("Render duration must match the final timeline boundary.");
+        }
+    }
+}
+
+public sealed record ProjectRenderRecord(
+    Guid Id,
+    Guid ProjectId,
+    int Version,
+    ProjectRenderManifest Manifest,
+    Guid? JobId,
+    Guid? OutputMediaAssetId,
+    ProjectRenderState State,
+    string? CommandLog,
+    string? ErrorMessage,
+    DateTimeOffset CreatedUtc,
+    DateTimeOffset UpdatedUtc)
+{
+    public void Validate()
+    {
+        if (Id == Guid.Empty || ProjectId == Guid.Empty || Version <= 0 || Manifest.ProjectId != ProjectId)
+        {
+            throw new ArgumentException("Render record identity/version is invalid.");
+        }
+
+        Manifest.Validate();
+        if (State == ProjectRenderState.Completed && OutputMediaAssetId is null)
+        {
+            throw new ArgumentException("Completed renders require an output media asset.");
+        }
+    }
+}
