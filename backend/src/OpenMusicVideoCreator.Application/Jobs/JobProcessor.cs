@@ -17,14 +17,14 @@ public sealed class JobProcessor
         JobService jobService,
         IJobExecutionDispatcher dispatcher,
         IJobChangePublisher publisher,
-        IJobExecutionCancellationRegistry executionCancellations,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IJobExecutionCancellationRegistry? executionCancellations = null)
     {
         _jobs = jobs;
         _jobService = jobService;
         _dispatcher = dispatcher;
         _publisher = publisher;
-        _executionCancellations = executionCancellations;
+        _executionCancellations = executionCancellations ?? PassiveExecutionCancellationRegistry.Instance;
         _timeProvider = timeProvider;
     }
 
@@ -123,5 +123,21 @@ public sealed class JobProcessor
         var value = _timeProvider.GetUtcNow().ToUniversalTime();
         var ticks = value.Ticks - value.Ticks % 10;
         return new DateTimeOffset(ticks, TimeSpan.Zero);
+    }
+
+    private sealed class PassiveExecutionCancellationRegistry : IJobExecutionCancellationRegistry
+    {
+        public static PassiveExecutionCancellationRegistry Instance { get; } = new();
+
+        public CancellationToken Register(Guid jobId, CancellationToken hostCancellationToken = default) =>
+            hostCancellationToken;
+
+        public void Cancel(Guid jobId)
+        {
+        }
+
+        public void Unregister(Guid jobId)
+        {
+        }
     }
 }
