@@ -14,7 +14,9 @@ import {
   type VisualLibraryResponse,
 } from "@/src/api/client";
 import { SongAnalysisPanel } from "@/src/features/analysis/SongAnalysisPanel";
+import { KeyframeWorkspace } from "@/src/features/generation/KeyframeWorkspace";
 import { VisualLibraryPanel } from "@/src/features/library/VisualLibraryPanel";
+import { DirectorStoryboardPanel } from "@/src/features/planning/DirectorStoryboardPanel";
 import { ProjectForm } from "./ProjectForm";
 import { ProjectSidebar } from "./ProjectSidebar";
 import { createEmptyProject, editorToRequest, projectToEditor, type EditorState } from "./projectModel";
@@ -148,6 +150,8 @@ export function ProjectStudio() {
         <ProjectForm editor={editor} selectedSong={selectedSong} song={song} visualLibrary={visualLibrary} online={online} saving={saving} message={message} onFieldChange={setField} onSongSelected={setSelectedSong} onSubmit={save} onDelete={() => void removeCurrentProject()} />
         <SongAnalysisPanel projectId={editor.id} songAttached={song !== null} lyrics={editor.lyrics} />
         <VisualLibraryPanel onChanged={setVisualLibrary} />
+        <DirectorStoryboardPanel projectId={editor.id} visualLibrary={visualLibrary} />
+        <KeyframeWorkspace projectId={editor.id} />
       </section>
     </main>
   );
