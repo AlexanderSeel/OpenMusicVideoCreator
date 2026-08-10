@@ -2,6 +2,7 @@ using OpenMusicVideoCreator.Application.Abstractions;
 using OpenMusicVideoCreator.Application.Generation;
 using OpenMusicVideoCreator.Application.Planning;
 using OpenMusicVideoCreator.Domain.Generation;
+using OpenMusicVideoCreator.Domain.Planning;
 using OpenMusicVideoCreator.Domain.Projects;
 using OpenMusicVideoCreator.Domain.Timeline;
 
@@ -316,7 +317,7 @@ public sealed class TimelineEditorService
 
     private async Task<ProjectTimelineVersion> CreateFromStoryboardAsync(
         MusicVideoProject project,
-        Domain.Planning.StoryboardVersion storyboard,
+        StoryboardVersion storyboard,
         Guid? parentVersionId,
         CancellationToken cancellationToken)
     {
