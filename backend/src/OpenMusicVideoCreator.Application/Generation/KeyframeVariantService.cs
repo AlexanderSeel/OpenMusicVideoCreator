@@ -31,12 +31,18 @@ public sealed class KeyframeVariantService
             .ThenBy(variant => variant.VariantNumber)
             .ToArray();
 
+    public Task<KeyframeVariant?> GetAsync(
+        Guid projectId,
+        Guid variantId,
+        CancellationToken cancellationToken = default) =>
+        _variants.GetAsync(projectId, variantId, cancellationToken);
+
     public async Task<KeyframeVariant> RegisterPlannedAsync(
         Guid projectId,
         Guid sceneId,
         KeyframeRole role,
         Guid promptVersionId,
-        Guid jobId,
+        Guid? jobId,
         string providerId,
         string modelId,
         decimal? estimatedCost,
@@ -50,11 +56,34 @@ public sealed class KeyframeVariantService
         var now = GetUtcNow();
         var variant = new KeyframeVariant(
             Guid.NewGuid(), projectId, sceneId, role, number, promptVersionId, jobId, null,
-            providerId.Trim(), modelId.Trim(), GenerationVariantState.Queued, false,
+            providerId.Trim(), modelId.Trim(), jobId is null ? GenerationVariantState.Planned : GenerationVariantState.Queued, false,
             estimatedCost, null, NormalizeCurrency(currency), now, now);
         variant.Validate();
         await _variants.UpsertAsync(variant, cancellationToken);
         return variant;
+    }
+
+    public async Task<KeyframeVariant> AttachJobAsync(
+        Guid projectId,
+        Guid variantId,
+        Guid jobId,
+        CancellationToken cancellationToken = default)
+    {
+        if (jobId == Guid.Empty) throw new ArgumentException("Job ID is required.", nameof(jobId));
+        var existing = await RequireAsync(projectId, variantId, cancellationToken);
+        if (existing.JobId is not null && existing.JobId != jobId)
+        {
+            throw new InvalidOperationException("Keyframe variant is already attached to another job.");
+        }
+        var updated = existing with
+        {
+            JobId = jobId,
+            State = GenerationVariantState.Queued,
+            UpdatedUtc = GetUtcNow(),
+        };
+        updated.Validate();
+        await _variants.UpsertAsync(updated, cancellationToken);
+        return updated;
     }
 
     public async Task<KeyframeVariant> CompleteAsync(
@@ -106,13 +135,22 @@ public sealed class KeyframeVariantService
         }
 
         var sceneVariants = await ListSceneAsync(projectId, selected.SceneId, cancellationToken);
+        var now = GetUtcNow();
+        KeyframeVariant? selectedResult = null;
         foreach (var variant in sceneVariants.Where(variant => variant.Role == selected.Role))
         {
             var shouldSelect = variant.Id == selected.Id;
-            if (variant.IsSelected == shouldSelect) continue;
-            await _variants.UpsertAsync(variant with { IsSelected = shouldSelect, UpdatedUtc = GetUtcNow() }, cancellationToken);
+            if (variant.IsSelected == shouldSelect)
+            {
+                if (shouldSelect) selectedResult = variant;
+                continue;
+            }
+            var updated = variant with { IsSelected = shouldSelect, UpdatedUtc = now };
+            await _variants.UpsertAsync(updated, cancellationToken);
+            if (shouldSelect) selectedResult = updated;
         }
-        return selected with { IsSelected = true, UpdatedUtc = GetUtcNow() };
+
+        return selectedResult ?? selected with { IsSelected = true, UpdatedUtc = now };
     }
 
     public async Task<bool> DeleteAsync(
