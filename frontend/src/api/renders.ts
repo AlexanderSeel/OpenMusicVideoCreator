@@ -1,3 +1,11 @@
+import type {
+  TimelineClipTransform,
+  TimelineColorAdjustment,
+  TimelineEffect,
+  TimelineOverlay,
+  TimelineTransitionKind,
+} from "./timeline";
+
 export type ProjectRenderKind = "Preview" | "Final";
 export type ProjectRenderState = "Planned" | "Queued" | "Rendering" | "Completed" | "Failed" | "Cancelled";
 
@@ -9,6 +17,14 @@ export interface RenderTimelineClip {
   timelineStartSeconds: number;
   durationSeconds: number;
   transitionIn: string;
+  sourceInSeconds?: number;
+  sourceDurationSeconds?: number | null;
+  playbackRate?: number;
+  freezeExtensionSeconds?: number;
+  transform?: TimelineClipTransform | null;
+  color?: TimelineColorAdjustment | null;
+  transitionKind?: TimelineTransitionKind | null;
+  transitionDurationSeconds?: number;
 }
 
 export interface ProjectRenderManifest {
@@ -22,6 +38,9 @@ export interface ProjectRenderManifest {
   clips: RenderTimelineClip[];
   durationSeconds: number;
   timelineSha256: string;
+  timelineVersionId?: string | null;
+  overlays?: TimelineOverlay[] | null;
+  effects?: TimelineEffect[] | null;
 }
 
 export interface ProjectRenderAttempt {
