@@ -104,7 +104,7 @@ public static class PlanningEndpoints
             {
                 return Results.NotFound();
             }
-            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or InvalidDataException)
             {
                 return Validation("visualArc", exception.Message);
             }
@@ -159,9 +159,10 @@ public static class PlanningEndpoints
                     Environment = request.Environment,
                     Camera = request.Camera,
                     TransitionIn = request.TransitionIn,
-                    CharacterIds = request.CharacterIds?.ToArray() ?? [],
-                    StyleIds = request.StyleIds?.ToArray() ?? [],
-                    LocationIds = request.LocationIds?.ToArray() ?? [],
+                    CharacterIds = request.CharacterIds?.Distinct().ToArray() ?? [],
+                    StyleIds = request.StyleIds?.Distinct().ToArray() ?? [],
+                    LocationIds = request.LocationIds?.Distinct().ToArray() ?? [],
+                    Details = request.Details?.ToDomain() ?? existing.Details,
                 };
                 var storyboard = await service.UpdateSceneAsync(projectId, sceneId, edited, cancellationToken);
                 return Results.Ok(StoryboardResponse.FromDomain(storyboard));
@@ -170,7 +171,7 @@ public static class PlanningEndpoints
             {
                 return Results.NotFound();
             }
-            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or InvalidDataException)
             {
                 return Validation("scene", exception.Message);
             }
@@ -198,7 +199,7 @@ public static class PlanningEndpoints
             {
                 return Results.NotFound();
             }
-            catch (ArgumentException exception)
+            catch (Exception exception) when (exception is ArgumentException or InvalidDataException)
             {
                 return Validation("sceneOrder", exception.Message);
             }
@@ -237,7 +238,7 @@ public static class PlanningEndpoints
             {
                 return Results.NotFound();
             }
-            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or InvalidDataException)
             {
                 return Validation("prompt", exception.Message);
             }
