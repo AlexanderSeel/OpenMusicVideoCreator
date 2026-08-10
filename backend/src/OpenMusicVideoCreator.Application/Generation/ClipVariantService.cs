@@ -130,6 +130,27 @@ public sealed class ClipVariantService
         return updated;
     }
 
+    public async Task<SceneClipVariant> UpdateProviderAsync(
+        Guid projectId,
+        Guid variantId,
+        string providerId,
+        string modelId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(providerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
+        var existing = await RequireAsync(projectId, variantId, cancellationToken);
+        var updated = existing with
+        {
+            ProviderId = providerId.Trim(),
+            ModelId = modelId.Trim(),
+            UpdatedUtc = GetUtcNow(),
+        };
+        updated.Validate();
+        await _variants.UpsertAsync(updated, cancellationToken);
+        return updated;
+    }
+
     public async Task<SceneClipVariant> SelectAsync(
         Guid projectId,
         Guid variantId,
