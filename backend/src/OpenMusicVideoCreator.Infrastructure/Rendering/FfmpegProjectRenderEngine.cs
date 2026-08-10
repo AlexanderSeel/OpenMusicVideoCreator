@@ -176,7 +176,7 @@ public sealed class FfmpegProjectRenderEngine : IProjectRenderEngine
             filters.Add($"[{index}:v:0]{string.Join(',', chain)}[v{index}]");
         }
 
-        var currentLabel = "joined";
+        var currentLabel = "outv";
         filters.Add(string.Concat(Enumerable.Range(0, manifest.Clips.Count).Select(index => $"[v{index}]")) + $"concat=n={manifest.Clips.Count}:v=1:a=0[{currentLabel}]");
 
         var effectNumber = 0;
