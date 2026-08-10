@@ -112,8 +112,12 @@ public sealed class FfmpegProjectRenderEngine : IProjectRenderEngine
         var filters = new List<string>(manifest.Clips.Count + 1);
         for (var index = 0; index < manifest.Clips.Count; index++)
         {
-            var duration = manifest.Clips[index].DurationSeconds.ToString("0.######", CultureInfo.InvariantCulture);
-            filters.Add($"[{index}:v:0]trim=duration={duration},setpts=PTS-STARTPTS,scale={manifest.Width}:{manifest.Height}:force_original_aspect_ratio=increase,crop={manifest.Width}:{manifest.Height},fps={manifest.FramesPerSecond},format=yuv420p[v{index}]");
+            var clip = manifest.Clips[index];
+            var duration = clip.DurationSeconds.ToString("0.######", CultureInfo.InvariantCulture);
+            var fade = IsFadeTransition(clip.TransitionIn)
+                ? $",fade=t=in:st=0:d={Math.Min(0.35, clip.DurationSeconds / 4d).ToString("0.###", CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            filters.Add($"[{index}:v:0]tpad=stop_mode=clone:stop_duration={duration},trim=duration={duration},setpts=PTS-STARTPTS,scale={manifest.Width}:{manifest.Height}:force_original_aspect_ratio=increase,crop={manifest.Width}:{manifest.Height},fps={manifest.FramesPerSecond}{fade},format=yuv420p[v{index}]");
         }
         filters.Add(string.Concat(Enumerable.Range(0, manifest.Clips.Count).Select(index => $"[v{index}]")) + $"concat=n={manifest.Clips.Count}:v=1:a=0[outv]");
         args.Add("-filter_complex");
@@ -140,6 +144,10 @@ public sealed class FfmpegProjectRenderEngine : IProjectRenderEngine
         args.Add(outputPath);
         return args;
     }
+
+    private static bool IsFadeTransition(string transition) =>
+        transition.Contains("fade", StringComparison.OrdinalIgnoreCase) &&
+        !transition.Contains("crossfade", StringComparison.OrdinalIgnoreCase);
 
     private string ResolveExisting(string location)
     {
