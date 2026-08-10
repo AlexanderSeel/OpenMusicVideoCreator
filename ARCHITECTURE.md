@@ -22,18 +22,21 @@ ASP.NET Core API host
   |      reusable visual libraries
   |      Director / Visual Arc / storyboard / prompts
   |      keyframe + clip generation coordination
+  |      versioned Advanced timeline editing
+  |      deterministic project rendering
   |      provider capability/settings ports
   |      persistent job coordination
   |
   +--> Infrastructure
          DuckDB repositories/settings/jobs
          filesystem media storage
-         ffprobe / FFmpeg analysis + previews
+         ffprobe / FFmpeg analysis + previews + rendering
          credential resolver
          mock Director/Image/Video providers
          capability-specific provider resolvers
-         keyframe/video job dispatchers
+         keyframe/video/render job dispatchers
          persistent background worker + SSE change hub
+         active-local-execution cancellation signals
 ```
 
 Logical boundaries can be split later only if a concrete scaling/deployment requirement justifies it.
@@ -59,14 +62,14 @@ Infrastructure <--- API
 - **API** maps HTTP contracts to application operations.
 - **Frontend** never becomes an alternative source of truth for persisted state.
 
-## Domain model
+## Domain model and provenance
 
-Important implemented domain areas now include:
+Important durable concepts include:
 
 - `MusicVideoProject` and stable Song/Character/Style/Location references
 - media metadata
-- explicit persistent generation job state machine
-- immutable/versioned song analysis and lyric timing
+- explicit persistent generation-job state machine
+- immutable/versioned Song Analysis and lyric timing
 - reusable visual/asset library models
 - project-specific Character continuity/state
 - normalized Director controls
@@ -75,37 +78,27 @@ Important implemented domain areas now include:
 - immutable prompt versions/templates
 - `KeyframeVariant` and scene keyframe approval
 - `SceneClipVariant`
-- per-scene keyframe/video generation settings
+- `ProjectTimelineVersion`
+- `ProjectRenderManifest`, `ProjectRenderRecord`, and render attempts
 
-### Planning provenance
-
-A storyboard links one exact Song Analysis and Visual Arc. Scene identity remains stable across storyboard versions. Each scene's selected prompt is an immutable `PromptVersionId`.
-
-Keyframes reference that prompt version directly. Animated clips then reference:
-
-- the same prompt version
-- approved Start keyframe variant
-- optional approved End keyframe variant
-- generation job
-- actual provider/model
-- generated media asset
-
-This forms an auditable chain:
+The primary provenance chain is:
 
 ```text
-Song asset
+Original Song media
   → SongAnalysisId
   → VisualArcId
   → StoryboardVersionId / SceneId
   → PromptVersionId
   → KeyframeVariantId(s)
-  → SceneClipVariantId
-  → MediaAssetId
+  → SceneClipVariantId / generated clip media
+  → ProjectTimelineVersionId (optional Advanced edit layer)
+  → ProjectRenderManifest / timeline SHA-256
+  → rendered MediaAssetId
 ```
 
-Regeneration appends new variants and never overwrites prior successful media.
+Regeneration and editing append versions/variants rather than overwriting successful assets or prior decisions.
 
-## Application layer
+## Planning and generation application layer
 
 Important ports/use cases include:
 
@@ -125,39 +118,19 @@ Important ports/use cases include:
 
 ### Keyframe coordination
 
-`KeyframeGenerationCoordinator` resolves the exact selected prompt and a capability-compatible image provider/model. It builds continuity references from reusable Character/Style/Location state while respecting provider limits, persists a planned variant, and then enqueues a durable `keyframe.image.generate` job.
+`KeyframeGenerationCoordinator` resolves the selected immutable prompt plus a capability-compatible image provider/model. It builds continuity references, persists a planned variant first, then enqueues durable generation work. This closes the worker race where generation might otherwise finish before provenance exists.
 
-The variant exists before worker execution, closing the race where a fast worker could otherwise finish before generation provenance had been persisted.
+### Scene-video coordination
 
-### Video coordination
+`VideoGenerationCoordinator` requires current keyframe approval. It resolves approved Start/optional End media and creates a `scene.video.generate` job with dependencies on the corresponding keyframe jobs.
 
-`VideoGenerationCoordinator` requires the **current keyframe selection to be approved**. It resolves approved Start/optional End media and creates a `scene.video.generate` job that depends on the corresponding keyframe jobs.
+Provider/model selection requires Image-to-Video capability plus supported Start/End-frame, duration, aspect-ratio, and resolution semantics.
 
-Provider/model selection requires `ImageToVideo` plus Start-frame support. The coordinator resolves provider-supported duration/resolution and validates project aspect ratio and optional End-frame capability before persistence.
+Fallback candidates are persisted only when those semantics can be preserved. Operational failures may move to compatible fallbacks; moderation rejection, invalid parameters, and permanent failures do not silently change provider.
 
-HTTP does not wait for provider work. The persisted job/dependency graph is the orchestration source of truth.
+## Persistent jobs and active cancellation
 
-### Compatible fallback plan
-
-Fallback is a provider-independent policy, not a provider implementation detail.
-
-When enabled, the coordinator persists only alternatives that can preserve the same:
-
-- Start-frame contract
-- End-frame contract when used
-- resolved duration
-- project aspect ratio
-- resolved resolution
-
-The video dispatcher can move to these alternatives for operational failures such as quota/credits, rate limiting, outage, authentication, unsupported adapter capability, network, timeout, or transient failure.
-
-Moderation rejection, invalid parameters, and permanent failures do not silently change provider.
-
-If a fallback succeeds, `SceneClipVariant.ProviderId/ModelId` are updated to the adapter that actually produced the media. Custom mode can disable fallback entirely.
-
-## Persistent jobs
-
-The existing Block 4 state machine remains shared by keyframes and clips:
+Keyframe, clip, and render work share the same persisted job graph/state machine:
 
 ```text
 Draft
@@ -179,36 +152,103 @@ FailedPermanent
 Cancelled
 ```
 
-Jobs persist:
+Jobs persist definition/payload, project/scene/parent IDs, provider/model, dependencies, attempts/retries, scheduling, provider task IDs, errors, cost, and claim/lease metadata.
 
-- definition/payload
-- project/scene/parent IDs
-- provider/model
-- dependencies
-- attempts/retries
-- scheduling
-- provider task ID
-- errors
-- estimated/actual cost
-- claim/lease metadata
-
-Generation-specific dispatch is composed as a chain:
+The execution dispatcher chain is now:
 
 ```text
-VideoGenerationJobExecutionDispatcher
-  └─ non-video → GenerationJobExecutionDispatcher
-                     └─ non-keyframe → MockJobExecutionDispatcher
+ProjectRenderJobExecutionDispatcher
+  └─ non-render → VideoGenerationJobExecutionDispatcher
+                    └─ non-video → GenerationJobExecutionDispatcher
+                                      └─ non-keyframe → MockJobExecutionDispatcher
 ```
 
-This lets new generation job types share one worker/state machine rather than create parallel queue systems.
+Persisted state remains authoritative. `IJobExecutionCancellationRegistry` is intentionally **ephemeral**: it only propagates a persisted user cancellation into already-running local work such as FFmpeg. `JobProcessor` checks persisted `Cancelled` state before applying a dispatcher result so stale local success cannot overwrite cancellation.
 
-Provider task IDs returned by an adapter are carried in `JobExecutionResult` and persisted by `JobService`. Startup recovery therefore reuses the existing known-provider-task reconciliation path instead of blindly resubmitting remote work.
+Project/scene/single-job cancel APIs signal matching active execution tokens after persisting cancellation.
+
+## Versioned Advanced timeline
+
+`ProjectTimelineVersion` is the reversible editing layer between selected generated clips and deterministic rendering.
+
+It pins:
+
+- exact project, Storyboard, and original Song IDs
+- parent timeline version
+- `MusicTrackLocked = true`
+- ordered `TimelineClip` records
+- overlay lane records
+- effect lane records
+
+A timeline clip keeps scene/variant/media provenance while storing edit decisions:
+
+- timeline slot
+- source in/source duration
+- slight playback-rate change
+- freeze extension
+- transition kind/duration
+- scale/position
+- crop
+- opacity
+- brightness/contrast/saturation
+
+Application operations create new versions for update, reorder, split, completed-variant replacement, overlay/effect changes, reset, and restore. Restoring an old version creates another new version.
+
+`TimelineEditorService` refuses cross-project media and ties restored versions to the current original Song reference.
+
+The frontend reuses persisted Block 6 analysis for music-reference lanes: waveform, quiet ranges, structure sections, phrase boundaries, beat/bar markers, and lyric timing.
+
+The Scene Inspector is separated into Story, Character, Environment, Camera, Generation, and Prompt. Generation-specific provider fields remain in capability-aware generation workspaces; the timeline deals in provider-independent edit state plus completed variant references.
+
+## Deterministic project rendering
+
+`ProjectRenderService` creates versioned Preview/Final render records. It uses the latest Advanced timeline only when its exact Storyboard and Song IDs match the current project state; stale timeline state is not silently rebased.
+
+`ProjectRenderManifest` pins:
+
+- Storyboard and original Song
+- optional `TimelineVersionId`
+- selected clip variant/media provenance
+- timing/source trim/playback/freeze
+- transition metadata
+- transforms/crop/color/opacity
+- overlay/effect lanes
+- output dimensions/profile
+- deterministic timeline SHA-256
+
+Preview and Final created from unchanged decisions therefore share the same timeline hash even though encoding settings differ.
+
+### FFmpeg render boundary
+
+`FfmpegProjectRenderEngine` resolves every media path through `LocalMediaPathResolver` and passes every FFmpeg argument through `ProcessStartInfo.ArgumentList`; no user path is assembled into a shell command.
+
+Current filters apply:
+
+- source trim
+- playback-rate change
+- freeze/short-source padding
+- crop/scale/position
+- brightness/contrast/saturation
+- opacity
+- fade transition behavior
+- overlay lanes
+- Fade-to-black, Grayscale, and Vignette effects
+
+Scene clips and overlays may contain audio, but their audio is never mapped. The protected original Song input is the sole output audio source.
+
+`Crossfade` is a persisted timeline intent but currently uses fade behavior rather than a true neighboring FFmpeg `xfade`; that limitation remains explicitly open in `PLAN.md`.
+
+After FFmpeg writes output, the existing `IMediaProbe`/ffprobe adapter validates duration and valid audio presence before a completed render/media record is published.
+
+On cancellation, invalid output, or persistence failure, the dispatcher best-effort removes newly created render bytes/media metadata only; source/generated inputs remain untouched.
+
+Render attempts persist start/completion, outcome, error, and deterministic command log. Automatic transient retries close the failed attempt and keep the render pending; retry exhaustion becomes terminal. Manual retry restarts the same persisted job/manifest.
 
 ## Infrastructure persistence
 
 DuckDB remains authoritative for core structured metadata/jobs. Large media bytes remain filesystem data.
 
-Current core tables include:
+Core tables include:
 
 ```text
 schema_migrations
@@ -228,19 +268,19 @@ visual_library_items
 project_character_states
 ```
 
-Versioned JSON stored through `IProjectSettingsRepository` currently covers:
+Versioned JSON behind repository interfaces currently covers:
 
 - Visual Arc/storyboard/prompt histories
-- keyframe variants
-- keyframe approvals/settings
-- clip variants
-- video-generation settings
+- keyframe variants/approvals/settings
+- clip variants/video-generation settings
+- render history (`render.history.v1`)
+- Advanced timeline versions (`timeline.versions.v1`)
 
-These are behind application repository interfaces, so moving them to dedicated tables later does not change domain/application consumers.
+These repository interfaces allow later migration to dedicated tables without changing Domain/Application consumers.
 
 ## Media storage
 
-`LocalMediaPathResolver` centralizes root/path safety.
+`LocalMediaPathResolver` centralizes root/path-traversal safety.
 
 ```text
 projectsRoot/
@@ -257,17 +297,18 @@ projectsRoot/
     renders/
 ```
 
-Generated keyframes are stored in `keyframes/`; animated clips are stored in `generated/`. Both receive `MediaAssetMetadata` with `MediaCreationSource.Generated`.
+- original Song/reference media remains read-only from generation/timeline/render flows
+- generated keyframes/clips receive `MediaCreationSource.Generated`
+- final/proxy renders receive `MediaCreationSource.Rendered`
+- browser media routes reopen media through metadata and support range processing where appropriate
 
-Preview endpoints reopen media via `IMediaStorage` and are range-enabled for normal browser image/video usage.
+## Provider abstractions and credentials
 
-## Provider abstractions
-
-Provider capability descriptors remain the decision boundary. Current mock providers cover Director, image generation/editing, video generation, image-to-video, and video-to-video without requiring paid credentials.
+Provider capability descriptors remain the generation decision boundary. Current mock providers cover Director, image generation/editing, video generation, image-to-video, and video-to-video without paid credentials.
 
 Credential settings persist references, never resolved plaintext secrets.
 
-`ImageGenerationProviderResolver` and `ImageToVideoProviderResolver` are infrastructure mappings from provider IDs to concrete adapters. Application coordinators only depend on provider capability/contracts.
+`ImageGenerationProviderResolver` and `ImageToVideoProviderResolver` are Infrastructure mappings from provider IDs to concrete adapters; Application coordinators depend only on contracts/capabilities.
 
 Real image/video provider adapters remain open PLAN items until mock validation is proven.
 
@@ -283,16 +324,18 @@ Implemented groups include:
 /api/projects/{projectId}/director/...
 /api/projects/{projectId}/scenes/{sceneId}/keyframes/...
 /api/projects/{projectId}/scenes/{sceneId}/clips/...
+/api/projects/{projectId}/timeline/...
+/api/projects/{projectId}/renders/...
 /api/providers/...
 /api/jobs/...
 /api/jobs/events
 ```
 
-Keyframe/clip generation endpoints return after durable enqueueing; provider execution happens in the worker.
+Generation/render POST endpoints persist/enqueue work and return without waiting for remote/FFmpeg execution.
 
 ## Frontend architecture
 
-Feature-oriented structure now includes:
+Feature-oriented structure includes:
 
 ```text
 src/features/projects/
@@ -303,49 +346,50 @@ src/features/generation/
   KeyframeWorkspace.tsx
   VideoGenerationWorkspace.tsx
   GenerationQueuePanel.tsx
+src/features/timeline/
+  AdvancedTimelineAnalysisPanel.tsx
+  TimelineAnalysisLanes.tsx
+  AdvancedTimelineEditor.tsx
+src/features/rendering/
+  ProjectRenderWorkspace.tsx
 ```
 
 ### Progressive disclosure
 
-Simple Mode uses automatic capability routing and hides provider/model/seed/raw-provider details. Advanced/Custom expose only generation controls supported by the selected model. Custom additionally controls fallback policy.
+Simple Mode hides provider internals and the Advanced timeline. Advanced/Custom show capability-supported generation settings plus timeline versions/analysis lanes/Scene Inspector. Custom additionally controls generation fallback policy.
 
 ### Generation Queue
 
-`GenerationQueuePanel` performs an initial persisted `GET /api/jobs/` read, then subscribes to `/api/jobs/events` with browser `EventSource`.
+`GenerationQueuePanel` initially reads persisted `/api/jobs/`, then subscribes to `/api/jobs/events` with `EventSource`. SSE is notification-only; reconnect reloads persisted state. There is no per-scene polling loop for the global queue.
 
-SSE events are notifications, not state storage. On SSE `ready`/reconnect, the frontend reloads persisted jobs. There is no per-scene job polling loop for the global queue.
+### Render workspace
 
-Queue actions call the same persisted job APIs used elsewhere: pause/resume/retry/restart/cancel plus project/scene scope operations.
+`ProjectRenderWorkspace` exposes Preview/Final queueing, versioned history, provenance, attempts, cancel/retry, deterministic command disclosure, and output download.
 
-## FFmpeg / ffprobe boundary
-
-All current process execution uses typed `ProcessStartInfo.ArgumentList` rather than shell-assembled user input.
-
-Implemented uses:
-
-- ffprobe authoritative audio metadata
-- FFmpeg streaming waveform/energy/rhythm analysis
-- FFmpeg bounded image/video preview generation for the asset library
-
-Block 11 will extend this deterministic boundary to clip assembly, preview rendering, and final output.
-
-## Data-loss/security boundaries
+## Security/data-loss boundaries
 
 - secrets are credential references, not plaintext project/DuckDB/export data
 - resolved media paths cannot escape configured roots
 - user file names are validated
-- FFmpeg/ffprobe receive typed arguments
+- FFmpeg/ffprobe receive typed argument lists
 - successful generated keyframes/clips are non-destructive variants
 - selected variants cannot be silently deleted
-- referenced reusable library items/assets are protected
-- planning edits create immutable versions rather than overwriting provenance
-- animation cannot proceed until the current keyframe selection is explicitly approved
-- fallback candidates cannot silently change resolved generation dimensions
+- reusable referenced library items/assets are protected
+- planning/timeline/render decisions are versioned instead of destructively overwritten
+- animation requires explicit current keyframe approval
+- fallback candidates cannot silently change resolved generation semantics
+- Advanced timeline overlays must reference current-project media
+- render cancellation cannot publish stale local success over persisted `Cancelled` state
 
 ## Tests and deferred execution
 
-Repository-side tests now cover architecture/persistence/providers/jobs, project/song/analysis/library/planning invariants, keyframe generation, clip generation, non-destructive variants, and video-provider fallback policy. Frontend source tests cover mounted keyframe/video/queue workflows and SSE usage.
+Repository-side tests cover architecture/persistence/providers/jobs, project/song/analysis/library/planning invariants, keyframe/clip generation, fallback policy, render provenance/lifecycle/cancellation, versioned Advanced timeline editing, and Advanced FFmpeg argument construction. Frontend source tests cover generation/queue/render/Advanced timeline structure.
 
-These tests are **not considered passed until executed**. `TESTPLAN.md` is the authoritative validation matrix for build/lint/typecheck/unit/integration/browser/restart/fault-injection proof.
+These tests are **not considered passed until executed**. `TESTPLAN.md` remains authoritative for build/lint/typecheck/unit/integration/browser/restart/FFmpeg/fault-injection proof.
 
-See `docs/BLOCK9_KEYFRAME_GENERATION.md` and `docs/BLOCK10_VIDEO_GENERATION.md` for focused generation-flow documentation.
+Focused documentation:
+
+- `docs/BLOCK9_KEYFRAME_GENERATION.md`
+- `docs/BLOCK10_VIDEO_GENERATION.md`
+- `docs/BLOCK11_RENDERING.md`
+- `docs/BLOCK12_ADVANCED_TIMELINE.md`
