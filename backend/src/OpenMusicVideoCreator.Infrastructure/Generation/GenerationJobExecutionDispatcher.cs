@@ -7,6 +7,7 @@ using OpenMusicVideoCreator.Application.Providers;
 using OpenMusicVideoCreator.Domain.Generation;
 using OpenMusicVideoCreator.Domain.Jobs;
 using OpenMusicVideoCreator.Domain.Media;
+using OpenMusicVideoCreator.Infrastructure.Jobs;
 
 namespace OpenMusicVideoCreator.Infrastructure.Generation;
 
