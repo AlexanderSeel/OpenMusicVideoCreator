@@ -40,3 +40,55 @@ public sealed record KeyframeVariantResponse(
         variant.CreatedUtc,
         variant.UpdatedUtc);
 }
+
+public sealed record KeyframeGenerationSettingsRequest(
+    string? ProviderId,
+    string? ModelId,
+    bool GenerateEndFrame,
+    string? Resolution,
+    int? Seed,
+    string? NegativePrompt);
+
+public sealed record KeyframeGenerationSettingsResponse(
+    Guid ProjectId,
+    Guid SceneId,
+    string? ProviderId,
+    string? ModelId,
+    bool GenerateEndFrame,
+    string? Resolution,
+    int? Seed,
+    string? NegativePrompt,
+    DateTimeOffset UpdatedUtc)
+{
+    public static KeyframeGenerationSettingsResponse FromDomain(SceneKeyframeGenerationSettings settings) => new(
+        settings.ProjectId,
+        settings.SceneId,
+        settings.ProviderId,
+        settings.ModelId,
+        settings.GenerateEndFrame,
+        settings.Resolution,
+        settings.Seed,
+        settings.NegativePrompt,
+        settings.UpdatedUtc);
+}
+
+public sealed record KeyframeGenerateRequest(KeyframeRole? Role);
+
+public sealed record KeyframeGenerationResponse(IReadOnlyList<KeyframeVariantResponse> Variants)
+{
+    public static KeyframeGenerationResponse FromDomain(IEnumerable<KeyframeVariant> variants) =>
+        new(variants.Select(KeyframeVariantResponse.FromDomain).ToArray());
+}
+
+public sealed record KeyframeApprovalStatusResponse(
+    bool IsApproved,
+    Guid? StartVariantId,
+    Guid? EndVariantId,
+    DateTimeOffset? ApprovedUtc)
+{
+    public static KeyframeApprovalStatusResponse FromDomain(SceneKeyframeApproval? approval, bool isCurrentSelectionApproved) => new(
+        isCurrentSelectionApproved,
+        approval?.StartVariantId,
+        approval?.EndVariantId,
+        approval?.ApprovedUtc);
+}
