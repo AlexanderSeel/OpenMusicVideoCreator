@@ -21,15 +21,17 @@ ASP.NET Core API host
   |      song analysis + lyric timing
   |      reusable visual/asset libraries
   |      project character continuity/state
+  |      AI Director + Visual Arc + storyboard + prompt history
   |      provider configuration/capabilities
   |      persistent job coordination
   |
   +--> Infrastructure adapters
          DuckDB repositories/migrations
+         project-settings planning history
          local project + global library media storage
          ffprobe / FFmpeg signal + preview adapters
          credential resolver
-         mock AI providers
+         mock AI providers / structured mock Director
          persistent job worker/change hub
 ```
 
@@ -71,6 +73,11 @@ Implemented domain areas include:
 - `VisualLibraryItem` with Character/Style/Location payloads
 - `AssetLibraryEntry`
 - `ProjectCharacterState`
+- normalized `DirectorControls`
+- versioned `VisualArcVersion` / `VisualArcPoint`
+- versioned `StoryboardVersion` / `StoryboardScene`
+- structured `StoryboardSceneDetails`
+- immutable `PromptVersion` plus versioned `PromptTemplate`
 
 ### Reusable visual library model
 
@@ -90,6 +97,27 @@ Location data includes environment, constraints, lighting, weather, and time of 
 
 Project-specific character state is intentionally separate from the Character Library item. It stores selected outfit, continuity lock overrides, and normalized state values such as presence/confidence/isolation. This is the seed model for later timeline curves without making global Character metadata project-specific.
 
+### Director planning model
+
+A Visual Arc is immutable/versioned and linked to one exact `SongAnalysisId`. Its normalized controls remain part of the version so later scene/prompt edits can reuse the creative settings that actually produced the storyboard.
+
+A storyboard is also immutable/versioned and links both the exact song analysis and exact Visual Arc. Scene identity remains stable across storyboard versions so prompt history and downstream generation variants can continue to reference the same logical scene.
+
+`StoryboardSceneDetails` carries structured creative planning that should not be collapsed into one opaque prompt string:
+
+- song section and associated lyric
+- scene purpose
+- emotion
+- composition
+- lighting
+- environment motion
+- visual symbolism
+- continuity requirements
+
+Core action/environment/camera/transition fields and Character/Style/Location IDs remain first-class scene data. This allows editing/reordering without reparsing generated text.
+
+Prompt history stores Director Intent separately from the expanded provider prompt. Prompt template name/version and storyboard-version provenance are persisted with every revision. Downstream generation models use immutable `PromptVersionId` references rather than copying an unauditable prompt string.
+
 ## Application
 
 Important ports/use cases now include:
@@ -103,6 +131,8 @@ Important ports/use cases now include:
 - `IProjectCharacterStateRepository`
 - `ILibraryMediaStorage`
 - `IMediaPreviewGenerator`
+- `IVisualArcRepository` / `IStoryboardRepository` / `IPromptHistoryRepository`
+- `IDirectorPlanningProvider` / `DirectorPlanningService`
 - provider capability interfaces/catalog/credentials
 - persistent job repository/queue/change stream/dispatcher
 - render-engine boundary
@@ -136,6 +166,24 @@ Transcription never silently rewrites authoritative lyrics.
 `AssetLibraryService` owns visual upload validation, source/preview media metadata, search/tags/favorites/source tracking, and reference-aware deletion. Removing an asset index entry intentionally does not silently delete underlying media bytes.
 
 `ProjectCharacterStateService` validates that the project actually references the Character, selected outfits belong to that Character, and state values are normalized to 0–1 before persistence.
+
+### AI Director / storyboard
+
+`DirectorPlanningService` builds a provider-independent planning context from:
+
+- the exact song-analysis version
+- BPM/sections/phrases
+- authoritative lyrics
+- storyline/meaning/visual direction/mood/genre
+- normalized Director controls
+- attached Characters/Styles/Locations
+- project-specific Character continuity state
+
+A new plan intentionally uses the latest song analysis. Later Visual Arc edits, scene edits, reordering, and prompt regeneration **do not** silently adopt a newer analysis: the service resolves the storyboard's stored `SongAnalysisId` and `VisualArcId`, validates that those provenance links still match, and uses the referenced Visual Arc controls for prompt expansion.
+
+Scene edit saves create a new storyboard version and a new prompt version only for the edited scene. Scene reorder keeps the existing ordered timing slots and moves scene content into those slots so timing stays contiguous/non-overlapping. Prompt-only regeneration creates a new prompt/storyboard version but never dispatches an image/video generation job.
+
+Structured Director output is validated before persistence: Visual Arc points must be valid and ordered; scenes must contain structured creative details; scene timing must cover the complete song without gaps/overlaps; and referenced Character/Style/Location IDs must already be attached to the project.
 
 ## Infrastructure
 
@@ -171,7 +219,15 @@ Schema evolution:
 
 Searchable library fields (kind/name/favorite) are first-class columns. Tags, typed detail payloads, asset-ID lists, continuity locks, and state maps are version-tolerant JSON columns.
 
+Block 8 planning history does not need an additional table migration. `DuckDbPlanningRepository` persists versioned Visual Arc, storyboard, and prompt-history JSON through `IProjectSettingsRepository` under separate versioned keys. This retains durable restart behavior while keeping the planning repository behind application ports.
+
 Large audio/image/video bytes never live in DuckDB.
+
+### Structured mock Director
+
+`StructuredMockDirectorProvider` is the offline Block 8 planning implementation. It derives a target scene count from song duration, prefers nearby section/phrase anchors with a pacing-relative snap tolerance, and enforces a hard minimum interval to avoid micro-scenes.
+
+It emits structured scene data rather than only a final prose prompt. The application layer validates that output and performs prompt expansion using the current versioned template.
 
 ### Media storage
 
@@ -218,9 +274,12 @@ Implemented product APIs now include:
 /api/library/items...
 /api/library/assets...
 /api/projects/{projectId}/characters/states...
+/api/projects/{projectId}/director/...
 /api/providers/...
 /api/jobs/...
 ```
+
+Director routes expose planning, Visual Arc/current+history, storyboard/current+history, scene editing/reordering, and prompt history/regeneration.
 
 Library deletion conflicts return referencing project/library IDs so the UI can explain why deletion is blocked instead of silently detaching references.
 
@@ -244,6 +303,10 @@ src/features/library/
   VisualLibraryPanel.tsx
   VisualReferenceSelector.tsx
   ProjectCharacterContinuity.tsx
+
+src/features/planning/
+  DirectorStoryboardPanel.tsx
+  SceneReferenceEditor.tsx
 ```
 
 ### Project references
@@ -266,11 +329,19 @@ src/features/library/
 
 `ProjectCharacterContinuity` edits project-specific outfit, continuity locks, and normalized initial state values separately from the reusable global Character definition.
 
+### Director workspace
+
+`DirectorStoryboardPanel` exposes all normalized Director controls, an editable Visual Arc, storyboard cards, and a detailed selected-scene inspector. The inspector edits structured creative scene fields plus Character/Style/Location references through `SceneReferenceEditor`.
+
+Prompt history visibly separates Director Intent from Final Provider Prompt and identifies template versions. The prompt-only action calls only the planning endpoint; job/image/video generation stays a later explicit workflow.
+
 Simple Mode still hides provider IDs, model IDs, seeds, and raw provider JSON.
 
 ## Persistent jobs
 
 Generation job state remains persisted in DuckDB. Normal resume does not regenerate completed work. Known provider task IDs survive restart and move into reconciliation instead of blind re-submission. SSE broadcasts are notifications only; persisted jobs are authoritative.
+
+Block 9 groundwork already models keyframe variants with immutable `PromptVersionId` provenance. It remains unfinished as a PLAN block until the full capability-routing/generation/UI/approval flow is implemented.
 
 ## Security / data-loss boundaries
 
@@ -282,11 +353,13 @@ Generation job state remains persisted in DuckDB. Normal resume does not regener
 - project/library metadata deletion does not silently destroy underlying user media
 - successful/generated variants remain non-destructive
 - referenced Character/Style/Location/Asset entries cannot be silently deleted
+- Director edits create new versions rather than overwriting prior Visual Arc/storyboard/prompt history
+- scene/prompt edits preserve exact song-analysis and Visual-Arc provenance
 
 ## Tests and deferred execution
 
-Repository-side test code covers architecture, persistence, providers, jobs, project/song behavior, analysis/versioning/rhythm/lyrics, and visual-library invariants including cross-project reuse, deletion conflicts, durable character state, and path traversal.
+Repository-side test code covers architecture, persistence, providers, jobs, project/song behavior, analysis/versioning/rhythm/lyrics, visual-library invariants, and Director planning invariants including music-aware scene pacing, structured scene details, planning-history persistence, and scene timing validation.
 
-Source-presence tests also protect the typed frontend contract and key Simple/Analysis/Library UI invariants.
+Source-presence tests protect the typed frontend contract and key Simple/Analysis/Library/Director UI invariants, including the planning client operations and actual wiring of the scene reference editor.
 
 These tests are **not considered passed until executed**. `TESTPLAN.md` contains the local Codex validation matrix and is the sole tracker for still-unexecuted build/lint/typecheck/test/FFmpeg/browser/manual proof.
