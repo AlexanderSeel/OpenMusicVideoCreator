@@ -91,6 +91,28 @@ public sealed record ProjectRenderManifest(
     }
 }
 
+public sealed record ProjectRenderAttempt(
+    int AttemptNumber,
+    ProjectRenderState State,
+    DateTimeOffset StartedUtc,
+    DateTimeOffset? CompletedUtc,
+    string? CommandLog,
+    string? ErrorMessage)
+{
+    public void Validate()
+    {
+        if (AttemptNumber <= 0)
+        {
+            throw new ArgumentException("Render attempt number must be positive.");
+        }
+
+        if (CompletedUtc is not null && CompletedUtc < StartedUtc)
+        {
+            throw new ArgumentException("Render attempt completion cannot precede its start.");
+        }
+    }
+}
+
 public sealed record ProjectRenderRecord(
     Guid Id,
     Guid ProjectId,
@@ -102,8 +124,11 @@ public sealed record ProjectRenderRecord(
     string? CommandLog,
     string? ErrorMessage,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc)
+    DateTimeOffset UpdatedUtc,
+    IReadOnlyList<ProjectRenderAttempt>? Attempts = null)
 {
+    public IReadOnlyList<ProjectRenderAttempt> ResolveAttempts() => Attempts ?? [];
+
     public void Validate()
     {
         if (Id == Guid.Empty || ProjectId == Guid.Empty || Version <= 0 || Manifest.ProjectId != ProjectId)
@@ -115,6 +140,16 @@ public sealed record ProjectRenderRecord(
         if (State == ProjectRenderState.Completed && OutputMediaAssetId is null)
         {
             throw new ArgumentException("Completed renders require an output media asset.");
+        }
+
+        var attempts = ResolveAttempts();
+        for (var index = 0; index < attempts.Count; index++)
+        {
+            attempts[index].Validate();
+            if (attempts[index].AttemptNumber != index + 1)
+            {
+                throw new ArgumentException("Render attempt numbers must be contiguous.");
+            }
         }
     }
 }
