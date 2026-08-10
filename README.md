@@ -8,46 +8,46 @@ The product specification is `AI_Music_Video_Studio_Master_Prompt.md`.
 
 - `PLAN.md` tracks **implemented vs unfinished product work**.
 - `TESTPLAN.md` tracks **validation that still needs to be executed locally**.
-- `AGENTS.md` defines the direct-`main`, no-PR/no-GitHub-Actions-by-default development workflow.
+- `AGENTS.md` defines the repository development workflow.
 
 ## Current implementation
 
-Implemented through PLAN Block 8:
+Repository-side implementation now covers Blocks 1–8 plus the **offline/mock paths of Blocks 9 and 10**. Real image/video provider integrations remain deliberately open until the complete mock validation matrix in `TESTPLAN.md` has actually passed.
+
+Implemented capabilities include:
 
 - Next.js 16 + React 19 + TypeScript frontend
 - ASP.NET Core .NET 10 modular backend: Domain, Application, Infrastructure, API
-- DuckDB authoritative metadata persistence, currently schema version **5**
-- filesystem media storage with SHA-256 metadata and path-traversal protection
-- desktop-first Simple Mode project dashboard/editor
+- DuckDB authoritative structured persistence plus local filesystem media storage
 - project create/reopen/edit/delete and portable JSON import/export
-- song upload/attachment with non-destructive replacement
-- local ffprobe metadata extraction
-- streaming FFmpeg waveform/energy analysis
-- beat/BPM detection, derived bars/phrases/quiet ranges, heuristic vocal/instrumental estimate
-- immutable/versioned song analyses and editable Structure Map
-- provider-neutral transcription-assisted lyric timing that preserves supplied lyrics exactly
+- non-destructive song upload/replacement
+- ffprobe metadata plus streaming FFmpeg waveform/energy analysis
+- beat/BPM, bars, phrases, quiet ranges, section suggestions, and editable Structure Map
+- authoritative supplied lyrics plus optional timestamp alignment
 - reusable Character, Style, Location, and Asset Libraries
-- cross-project references by stable library ID rather than copied metadata
-- character appearance/forbidden changes/outfits/default continuity locks
-- style prompt/camera/lighting/animation characteristics
-- location environment/constraints/lighting/weather/time-of-day characteristics
-- global visual reference assets with tags, favorites, source tracking, and FFmpeg-generated PNG previews
-- project-specific character outfit/continuity locks plus normalized initial state values
-- reference-aware deletion: referenced library items/assets cannot be silently removed
-- provider-independent AI capability contracts, safe credential references, and offline mock Director/Image/Video providers
-- persistent asynchronous job state, dependencies, attempts, retry/wait/recovery semantics, and SSE status updates
-- versioned AI Director planning with all nine Simple/Advanced creative controls
-- editable Visual Arc persisted against an exact song-analysis version
-- music-aware storyboard boundaries with a typical 3-minute target of roughly 20–35 non-rigid scenes
-- structured storyboard scene details for song section/lyric, purpose, emotion, composition, camera, lighting, environment motion, symbolism, continuity, and reusable Character/Style/Location references
-- scene editing and reordering that creates new storyboard versions while preserving timing/provenance constraints
-- separate Director Intent and expanded Final Provider Prompt
-- prompt template/version history and prompt-only regeneration without starting paid generation
-- exact prompt/storyboard/Visual-Arc/song-analysis provenance retained for downstream generated variants
-- typed frontend contracts for projects, analysis, libraries, Director planning, providers, and jobs
-- repository-side automated test code for the implemented domains and critical invariants
+- project-specific Character outfit/continuity/state
+- provider-independent capability contracts and credential references
+- offline mock Director/Image/Video providers
+- persistent asynchronous job engine with dependencies, retries, waiting states, provider task IDs, startup recovery, and SSE updates
+- versioned AI Director, Visual Arc, storyboard, scene editing, and prompt history
+- Start/End keyframe generation with immutable prompt provenance
+- continuity-aware Character/Style/Location reference routing with provider reference limits
+- non-destructive keyframe variants, compare/select/delete/regenerate, per-scene settings, and approval before animation
+- scene image-to-video generation from approved keyframes
+- non-destructive animated clip variants with prompt/keyframe/job/provider/model/cost provenance
+- capability-aware duration/aspect/resolution/end-frame validation
+- optional compatible-provider fallback; Custom mode can disable fallback
+- generated clip persistence and browser preview endpoints
+- global Generation Queue UI driven by the persisted job list plus SSE notifications
+- job pause/resume/retry/restart/cancel plus project/scene scope controls
+- Simple Mode automatic routing with provider-specific controls hidden; Advanced/Custom progressively expose supported settings
 
-Keyframe/video generation workflows, deterministic final rendering, Advanced Editor, QA/routing/cost controls, and release hardening remain in later PLAN blocks. Some Block 9 persistence/service groundwork already exists, but Block 9 remains unfinished in `PLAN.md`.
+See:
+
+- `docs/BLOCK9_KEYFRAME_GENERATION.md`
+- `docs/BLOCK10_VIDEO_GENERATION.md`
+
+Deterministic final rendering, full Advanced timeline editing, QA/smart routing/cost caps, release hardening, and real-provider integrations remain in later/open PLAN work.
 
 ## Prerequisites
 
@@ -55,9 +55,9 @@ Keyframe/video generation workflows, deterministic final rendering, Advanced Edi
 - npm 10+
 - .NET 10 SDK
 - Git
-- **FFmpeg + ffprobe** available on `PATH`
+- **FFmpeg + ffprobe** on `PATH`
 
-FFmpeg/ffprobe are runtime requirements for song analysis and visual-reference preview generation.
+FFmpeg/ffprobe are runtime requirements for song analysis and visual-reference previews. Block 11 will extend the deterministic FFmpeg boundary to final rendering.
 
 ## Install
 
@@ -68,211 +68,200 @@ dotnet restore backend/OpenMusicVideoCreator.sln
 
 ## Run locally
 
-Start the complete development app (backend + frontend):
+Start backend + frontend:
 
 ```powershell
 ./scripts/run.ps1
 ```
 
-The script opens `http://localhost:3000` once both services are ready. Press `Ctrl+C` to stop them. Use `-NoBrowser` to leave the browser closed, or pass `-BackendUrl` and `-FrontendPort` to choose different local ports.
+Use `-NoBrowser` if the script should not open `http://localhost:3000` automatically.
 
-Backend:
+Backend only:
 
 ```bash
 dotnet run --project backend/src/OpenMusicVideoCreator.Api/OpenMusicVideoCreator.Api.csproj
 ```
 
-Development backend URL: `http://localhost:5100`.
+Default development backend: `http://localhost:5100`.
 
-Frontend:
+Frontend only:
 
 ```bash
 npm run dev:web
 ```
 
-Open `http://localhost:3000`.
-
 `NEXT_PUBLIC_API_BASE_URL` defaults to `http://localhost:5100`.
 
-## Simple Mode
+## Product modes
 
-Simple Mode currently provides:
+### Simple
 
-- persistent project sidebar/list
-- new project, reopen, edit, save, delete
-- song upload and authoritative supplied lyrics
-- storyline / meaning / visual direction / mood / genre
-- reusable Character / Style / Location selection
-- project-specific Character continuity/outfit/state settings
-- 16:9 / 9:16 / 1:1 output and target platform
-- Fast / Balanced / Best Quality / Cheapest / Custom presets
-- estimated and maximum budget
-- offline/error/loading/empty states
-- responsive and keyboard-focus behavior
+Simple Mode keeps provider internals out of the primary workflow. It provides project/song/library/planning/generation controls while automatically routing supported mock/provider capabilities.
 
-Provider IDs, model IDs, seeds, raw provider JSON, and provider-specific controls remain outside Simple Mode.
+Provider IDs, model IDs, seeds, negative prompts, raw provider JSON, and provider-specific animation controls are hidden from Simple Mode.
 
-## Song analysis
+### Advanced / Expert Custom
 
-After a saved project has a song attached, **Analyze song** runs locally:
+Advanced/Custom progressively expose capability-supported generation settings. Current keyframe/video controls include provider/model selection, supported resolution/duration, optional End-frame use, seed/negative prompt where supported, and Custom fallback policy.
 
-1. `ffprobe` reads duration, codec, sample rate, channels, and bitrate.
-2. FFmpeg streams audio as mono 8 kHz signed 16-bit PCM.
-3. The backend builds bounded waveform buckets and normalized energy windows without retaining the complete decoded song in application memory.
-4. Signal analysis produces beat candidates and a BPM estimate when sufficiently confident.
-5. Beats derive four-beat bars and four-bar phrase windows.
-6. Low-energy windows derive quiet ranges.
-7. Energy and zero-crossing characteristics produce a deliberately low-confidence vocal/instrumental activity estimate; uncertain input may return no estimate.
-8. Energy changes propose editable Structure Map sections.
-9. The analysis is persisted as an immutable DuckDB version.
+Unsupported settings are rejected by the backend rather than merely hidden by the frontend.
 
-Saving Structure Map edits creates another analysis version rather than overwriting history.
+## Song analysis and Structure Map
 
-### Lyrics timing
+After a saved project has a Song attached, local analysis:
 
-Supplied lyrics remain authoritative. Optional transcription data is normalized to timestamped segments and aligned to the existing lyric lines. The alignment stores:
+1. Uses `ffprobe` for authoritative duration/codec/sample-rate/channel/bitrate metadata.
+2. Streams audio through FFmpeg as bounded PCM analysis input.
+3. Builds waveform and normalized energy data.
+4. Estimates beat candidates/BPM when sufficiently confident.
+5. Derives bars, phrase windows, quiet ranges, and low-confidence vocal/instrumental activity.
+6. Proposes editable Structure Map sections.
+7. Persists immutable analysis versions.
 
-- exact supplied lyric text
-- start/end suggestions when matched
-- confidence
-- supplied-lyrics SHA-256
-- exact source media asset and song-analysis IDs
-- independent timing version
+Saving Structure Map edits creates a new version instead of overwriting history.
 
-Transcription output never replaces the project lyric text automatically.
+Supplied lyrics remain authoritative. Optional transcription segments only contribute timing/confidence metadata and never silently rewrite the project lyrics.
 
-### Analysis API
+## Reusable visual library
 
-```text
-GET  /api/projects/{projectId}/analysis/
-POST /api/projects/{projectId}/analysis/
-GET  /api/projects/{projectId}/analysis/versions
-PUT  /api/projects/{projectId}/analysis/sections
-GET  /api/projects/{projectId}/analysis/lyrics/timing
-POST /api/projects/{projectId}/analysis/lyrics/timing
-GET  /api/projects/{projectId}/analysis/lyrics/timing/versions
-```
+The application-global Library stores stable reusable Character, Style, Location, and Asset IDs.
 
-## Visual Library
+Character data supports appearance, forbidden changes, outfits/reference assets, and default identity/face/hair/body/age/wardrobe locks. Project-specific outfit/continuity/state is persisted separately.
 
-The Library is application-global and reusable across projects.
+Style data stores prompt, camera, lighting, animation characteristics, tags/favorite/reference assets. Location data stores environment, constraints, lighting, weather, time of day, tags/favorite/reference assets.
 
-### Character
-
-Stores:
-
-- reference type
-- appearance description
-- forbidden changes
-- outfits
-- reference assets
-- default identity/face/hair/body/age/wardrobe locks
-
-Per-project Character state is stored separately so changing one project's outfit/continuity/state does not mutate the global Character.
-
-### Style
-
-Stores reusable:
-
-- prompt
-- camera characteristics
-- lighting characteristics
-- animation characteristics
-- tags/favorite/reference assets
-
-### Location
-
-Stores reusable:
-
-- environment description
-- constraints
-- lighting
-- weather
-- time of day
-- tags/favorite/reference assets
-
-### Asset Library
-
-Image/video reference uploads are stored under the global library area, not a single project. Metadata includes tags, favorite status, source description, original media ID, and optional derived preview media ID.
-
-FFmpeg creates a bounded PNG preview using typed `ProcessStartInfo.ArgumentList` invocation. Deleting an Asset Library entry never silently deletes underlying media bytes.
-
-### Library API
-
-```text
-GET    /api/library/items
-POST   /api/library/items
-GET    /api/library/items/{id}
-PUT    /api/library/items/{id}
-DELETE /api/library/items/{id}
-
-GET    /api/library/assets
-POST   /api/library/assets
-GET    /api/library/assets/{id}
-PUT    /api/library/assets/{id}
-DELETE /api/library/assets/{id}
-GET    /api/library/assets/{id}/preview
-
-GET /api/projects/{projectId}/characters/states/
-PUT /api/projects/{projectId}/characters/states/{characterId}
-```
-
-A Character/Style/Location referenced by a project cannot be deleted until references are removed. An Asset Library entry referenced by a visual-library item is similarly protected.
+Referenced library items/assets cannot be silently deleted. Underlying user media is not automatically destroyed when metadata/index entries change.
 
 ## AI Director and storyboard
 
-Director planning consumes the exact latest song analysis when a plan is created, together with project lyrics, storyline, meaning, visual direction, mood/genre, attached Characters/Styles/Locations, and project-specific Character continuity state.
+Director planning combines the exact song-analysis version, supplied lyrics, project story/meaning/visual direction/mood/genre, attached visual-library references, project Character state, and normalized Director controls.
 
-The planning controls are provider-independent normalized values for:
+The result is a versioned editable Visual Arc plus a structured storyboard. Scenes retain song section/lyric, purpose, emotion, action, composition, camera, lighting, environment/motion, symbolism, continuity requirements, and stable visual-library IDs.
 
-- literal ↔ symbolic
-- narrative strength
-- abstraction
-- emotion
-- darkness ↔ warmth
-- surrealism ↔ realism
-- visual complexity
-- acting intensity
-- camera energy
+Scene edits/reordering create new storyboard/prompt versions. Director Intent remains separate from the Final Provider Prompt. Prompt-only regeneration never automatically starts image/video generation.
 
-The mock Director creates a versioned Visual Arc and structured storyboard without calling a paid provider. Musical section/phrase boundaries are preferred when they are close enough to the desired scene pacing; hard minimum timing prevents invalid micro-scenes.
+Downstream keyframes/clips reference immutable `PromptVersionId` values rather than copying unauditable prompt text.
 
-Scene edits are non-destructive. Saving a scene creates a new storyboard version and a new prompt version for that scene only. Reordering moves scene content across the existing ordered timing slots so the storyboard remains contiguous. Prompt-only regeneration appends a prompt revision but does not create an image/video job.
+## Keyframe generation
 
-Later edits deliberately preserve the storyboard's exact `SongAnalysisId` and referenced Visual Arc/controls. Creating a fresh Director plan is the operation that intentionally adopts the newest song analysis.
+Each scene can create a Start keyframe and optional End keyframe through the persistent job engine.
 
-### Director API
+The coordinator:
+
+- resolves an enabled image-generation capability/model
+- validates provider/model settings
+- loads the selected immutable prompt version
+- prioritizes Character outfit/base references, then Style/Location references
+- caps references at the provider model's `MaxReferences`
+- persists a planned variant before enqueueing the job
+- materializes generated provider output into local keyframe media
+- records provider/model/job/media/cost provenance
+
+Regeneration appends variants. Selecting a new completed variant changes only the selection reference; older successful variants remain intact.
+
+Animation requires approval of the current completed Start selection and optional End selection.
+
+## Scene video generation
+
+Approved keyframes can be animated via `scene.video.generate` jobs.
+
+The video coordinator:
+
+- routes `ImageToVideo`-capable models with Start-frame support
+- validates optional End-frame support
+- resolves the nearest supported duration to the storyboard scene
+- preserves project aspect ratio and supported resolution
+- stores dependencies on approved keyframe jobs
+- enqueues without blocking HTTP on provider work
+- materializes successful video output into generated project media
+- persists a non-destructive `SceneClipVariant`
+
+### Fallback
+
+When enabled, fallback candidates are included only if they can preserve the exact Start/End-frame, duration, aspect-ratio, and resolution semantics resolved for the primary request.
+
+Fallback is permitted for operational/provider failures such as quota/credits, rate limit, outage, authentication, unsupported adapter capability, network, timeout, and transient failure. Moderation rejection, invalid parameters, and permanent failures do not silently switch providers.
+
+If a fallback succeeds, the clip variant records the provider/model that actually produced the asset. Custom mode can disable fallback.
+
+## Persistent Generation Queue
+
+The frontend Generation Queue first reads persisted jobs from `GET /api/jobs/` and then consumes `/api/jobs/events` via `EventSource`.
+
+SSE is only a notification mechanism; DuckDB jobs remain authoritative. Reconnect causes persisted state to be reloaded rather than assuming all in-memory events were received.
+
+Queue rows expose:
+
+- job type
+- state
+- elapsed time
+- attempts/retries
+- estimated/actual cost
+- next-run scheduling
+- errors
+- provider/model in Advanced/Custom mode
+- pause/resume/retry/restart/cancel actions
+
+Existing project and scene scope actions use the same persisted job graph.
+
+## API overview
+
+### Projects / analysis / library / Director
 
 ```text
-POST /api/projects/{projectId}/director/plan
-GET  /api/projects/{projectId}/director/visual-arc
-GET  /api/projects/{projectId}/director/visual-arc/versions
-PUT  /api/projects/{projectId}/director/visual-arc
-GET  /api/projects/{projectId}/director/storyboard
-GET  /api/projects/{projectId}/director/storyboard/versions
-PUT  /api/projects/{projectId}/director/storyboard/scenes/{sceneId}
-POST /api/projects/{projectId}/director/storyboard/reorder
-GET  /api/projects/{projectId}/director/storyboard/scenes/{sceneId}/prompts
-POST /api/projects/{projectId}/director/storyboard/scenes/{sceneId}/prompts/regenerate
+/api/projects/...
+/api/projects/{id}/song
+/api/projects/{projectId}/analysis/...
+/api/projects/{projectId}/analysis/lyrics/timing...
+/api/library/items...
+/api/library/assets...
+/api/projects/{projectId}/characters/states...
+/api/projects/{projectId}/director/...
 ```
 
-## Project API
+### Keyframes
 
 ```text
-GET    /api/projects/
-POST   /api/projects/
-GET    /api/projects/{id}
-PUT    /api/projects/{id}
-DELETE /api/projects/{id}
-GET    /api/projects/{id}/song
-POST   /api/projects/{id}/song
-GET    /api/projects/{id}/export
-POST   /api/projects/import
+GET    /api/projects/{projectId}/scenes/{sceneId}/keyframes/
+GET    /api/projects/{projectId}/scenes/{sceneId}/keyframes/settings
+PUT    /api/projects/{projectId}/scenes/{sceneId}/keyframes/settings
+POST   /api/projects/{projectId}/scenes/{sceneId}/keyframes/generate
+GET    /api/projects/{projectId}/scenes/{sceneId}/keyframes/{variantId}/preview
+POST   /api/projects/{projectId}/scenes/{sceneId}/keyframes/{variantId}/select
+DELETE /api/projects/{projectId}/scenes/{sceneId}/keyframes/{variantId}
+GET    /api/projects/{projectId}/scenes/{sceneId}/keyframes/approval
+POST   /api/projects/{projectId}/scenes/{sceneId}/keyframes/approval
+DELETE /api/projects/{projectId}/scenes/{sceneId}/keyframes/approval
 ```
 
-Projects store stable references to Song/Character/Style/Location IDs. They do not embed copies of reusable visual-library metadata.
+### Animated clips
 
-## Persistence
+```text
+GET    /api/projects/{projectId}/scenes/{sceneId}/clips/
+GET    /api/projects/{projectId}/scenes/{sceneId}/clips/settings
+PUT    /api/projects/{projectId}/scenes/{sceneId}/clips/settings
+POST   /api/projects/{projectId}/scenes/{sceneId}/clips/generate
+GET    /api/projects/{projectId}/scenes/{sceneId}/clips/{variantId}/preview
+POST   /api/projects/{projectId}/scenes/{sceneId}/clips/{variantId}/select
+DELETE /api/projects/{projectId}/scenes/{sceneId}/clips/{variantId}
+```
+
+### Providers / jobs
+
+```text
+GET /api/providers/
+GET /api/providers/{providerId}/settings
+PUT /api/providers/{providerId}/settings
+
+GET  /api/jobs/
+GET  /api/jobs/{id}
+POST /api/jobs/{id}/pause|resume|retry|restart|cancel
+POST /api/jobs/projects/{projectId}/pause|resume|cancel
+POST /api/jobs/projects/{projectId}/scenes/{sceneId}/pause|resume|cancel
+GET  /api/jobs/events
+```
+
+## Persistence and media layout
 
 Default layout:
 
@@ -286,9 +275,6 @@ projects/
   {project-id}/
     source/
     references/
-      characters/
-      styles/
-      locations/
     analysis/
     keyframes/
     generated/
@@ -296,77 +282,21 @@ projects/
     renders/
 ```
 
-DuckDB schema version 5 includes project/media/provider/job metadata plus:
+DuckDB stores structured metadata, jobs, dependencies, attempts, analysis/library metadata, and project/application settings. Large audio/image/video bytes remain filesystem media, not database blobs.
 
-```text
-song_analyses
-lyric_timing_analyses
-library_assets
-visual_library_items
-project_character_states
-```
+Visual Arc/storyboard/prompt history, keyframe variants/settings/approvals, and clip variants/settings use durable project settings where a separate schema table is not yet required. Generated media metadata remains in `media_assets`.
 
-Director Visual Arc, storyboard, and prompt history are versioned JSON records stored durably through the project-settings repository. This preserves Block 8 restart durability without adding a schema migration solely for planning history.
+## Provider credentials
 
-Large media files are never stored as DuckDB blobs.
+Provider settings store **credential references**, never resolved plaintext secret values. Environment-backed credentials are resolved at execution time; OS/external secret-store extension seams remain available.
 
-## Provider API and credentials
+Current normal development uses offline mocks and requires no paid-provider credentials. Real image/video adapters remain gated in `PLAN.md` until mock validation succeeds.
 
-```text
-GET /api/providers/
-GET /api/providers/{providerId}/settings
-PUT /api/providers/{providerId}/settings
-```
+## Validation
 
-Provider settings store credential references, never plaintext secret values. Current generation providers are offline mocks suitable for normal development without paid calls.
+Implementation completion belongs in `PLAN.md`. Executed proof belongs in `TESTPLAN.md`.
 
-## Persistent job engine
-
-The persisted state model includes:
-
-```text
-Draft
-Queued
-Submitting
-ProviderQueued
-Generating
-Downloading
-Validating
-Completed
-Paused
-WaitingForQuota
-WaitingForProvider
-WaitingForDependency
-RetryScheduled
-Rejected
-FailedRetryable
-FailedPermanent
-Cancelled
-```
-
-Normal resume does not regenerate completed work. Jobs with known provider task IDs are reconciled after restart instead of blindly creating duplicate remote requests.
-
-## Typed API contracts
-
-ASP.NET Core OpenAPI is the source contract. The committed frontend snapshot is:
-
-```text
-frontend/src/api/schema.d.ts
-```
-
-With the backend running:
-
-```bash
-npm run api:generate --workspace frontend
-```
-
-Frontend request/response types derive from that schema.
-
-## Validation workflow
-
-Implementation completion belongs in `PLAN.md`. Unexecuted validation belongs in `TESTPLAN.md`.
-
-Core local commands include:
+Core commands:
 
 ```bash
 npm run lint
@@ -378,19 +308,17 @@ dotnet build backend/OpenMusicVideoCreator.sln -c Release
 dotnet test backend/OpenMusicVideoCreator.sln -c Release
 ```
 
-Or:
+Or run the repository validation scripts:
 
 ```bash
 ./scripts/validate.sh
 ```
 
-PowerShell:
-
 ```powershell
 ./scripts/validate.ps1
 ```
 
-Do not infer success from implementation/source inspection. A local Codex run should execute `TESTPLAN.md` and check off only commands/scenarios that actually succeed.
+**Do not infer success from source inspection.** Blocks 9/10 contain repository-side tests, but the new code is not considered validated until the current `TESTPLAN.md` matrix actually runs successfully.
 
 ## Repository structure
 
@@ -398,10 +326,13 @@ Do not infer success from implementation/source inspection. A local Codex run sh
 frontend/
   app/
   src/api/
-  src/features/projects/
-  src/features/analysis/
-  src/features/library/
-  src/features/planning/
+  src/features/
+    projects/
+    analysis/
+    library/
+    planning/
+    generation/
+
 backend/
   src/
     OpenMusicVideoCreator.Domain/
@@ -411,6 +342,10 @@ backend/
   tests/
     OpenMusicVideoCreator.ArchitectureTests/
     OpenMusicVideoCreator.Api.Tests/
+
+docs/
+  BLOCK9_KEYFRAME_GENERATION.md
+  BLOCK10_VIDEO_GENERATION.md
 ```
 
 ## Development rules
@@ -424,4 +359,4 @@ Read before implementation work:
 5. `ARCHITECTURE.md`
 6. `SKILLS.md`
 
-Keep modules focused, preserve provider independence, persist asynchronous state, keep user assets/generations non-destructive, work directly on `main` unless explicitly told otherwise, and never claim a validation step passed unless it actually executed.
+Keep modules focused, preserve provider independence, persist asynchronous state, keep user assets/generations non-destructive, and never claim a validation step passed unless it actually executed.
