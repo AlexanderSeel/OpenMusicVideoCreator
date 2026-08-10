@@ -61,7 +61,8 @@ public sealed record PlannedScene(
     string TransitionIn,
     IReadOnlyList<Guid> CharacterIds,
     IReadOnlyList<Guid> StyleIds,
-    IReadOnlyList<Guid> LocationIds);
+    IReadOnlyList<Guid> LocationIds,
+    StoryboardSceneDetails? Details = null);
 
 public sealed record DirectorPlanningCandidate(
     string Summary,
