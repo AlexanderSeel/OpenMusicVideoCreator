@@ -80,6 +80,42 @@ public sealed record VisualArcVersion(
     }
 }
 
+public sealed record StoryboardSceneDetails(
+    string SongSection,
+    string AssociatedLyric,
+    string Purpose,
+    string Emotion,
+    string Composition,
+    string Lighting,
+    string EnvironmentMotion,
+    string VisualSymbolism,
+    string ContinuityRequirements)
+{
+    public static StoryboardSceneDetails Empty { get; } = new(
+        string.Empty,
+        string.Empty,
+        string.Empty,
+        string.Empty,
+        string.Empty,
+        string.Empty,
+        string.Empty,
+        string.Empty,
+        string.Empty);
+
+    public void Validate()
+    {
+        if (new[]
+            {
+                SongSection, AssociatedLyric, Purpose, Emotion, Composition,
+                Lighting, EnvironmentMotion, VisualSymbolism, ContinuityRequirements,
+            }
+            .Any(value => value is null))
+        {
+            throw new ArgumentException("Storyboard scene details cannot contain null text values.");
+        }
+    }
+}
+
 public sealed record StoryboardScene(
     Guid Id,
     int Sequence,
@@ -94,9 +130,11 @@ public sealed record StoryboardScene(
     IReadOnlyList<Guid> CharacterIds,
     IReadOnlyList<Guid> StyleIds,
     IReadOnlyList<Guid> LocationIds,
-    Guid? SelectedPromptVersionId)
+    Guid? SelectedPromptVersionId,
+    StoryboardSceneDetails? Details = null)
 {
     public double DurationSeconds => EndSeconds - StartSeconds;
+    public StoryboardSceneDetails EffectiveDetails => Details ?? StoryboardSceneDetails.Empty;
 }
 
 public sealed record StoryboardVersion(
@@ -138,6 +176,7 @@ public sealed record StoryboardVersion(
             {
                 throw new ArgumentException("Storyboard scenes cannot overlap.");
             }
+            scene.Details?.Validate();
         }
     }
 }
@@ -174,4 +213,9 @@ public sealed record PromptTemplate(
         "storyboard-scene",
         1,
         "Intent: {intent}\nAction: {action}\nEnvironment: {environment}\nCamera: {camera}\nContinuity: {continuity}");
+
+    public static PromptTemplate StoryboardSceneV2 { get; } = new(
+        "storyboard-scene",
+        2,
+        "Intent: {intent}\nPurpose: {purpose}\nSong section: {songSection}\nAssociated lyric: {lyric}\nAction: {action}\nEmotion: {emotion}\nComposition: {composition}\nCamera: {camera}\nLighting: {lighting}\nEnvironment: {environment}\nEnvironment motion: {environmentMotion}\nVisual symbolism: {visualSymbolism}\nContinuity requirements: {continuityRequirements}\nReference continuity: {continuity}");
 }
