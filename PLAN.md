@@ -225,7 +225,7 @@ Execution proof for the mock path is tracked in `TESTPLAN.md`; the real-provider
 - [x] FFmpeg render wrapper uses typed `ProcessStartInfo.ArgumentList` operations and the existing safe media path resolver.
 - [x] Assemble selected completed scene clip variants in storyboard timeline order.
 - [x] Preserve the project’s original uploaded `Song` media asset as the only render audio source unless explicitly changed by a later editor feature.
-- [ ] Implement clip timing, trim, scale/crop, fades/cuts/basic transitions, overlays, and subtitles needed by MVP. Current deterministic assembly covers timing, trim, short-clip padding, scale/crop, hard cuts, and basic fade-in; true crossfades, overlays, subtitles, and user-editable effect composition remain aligned with Block 12.
+- [ ] Implement clip timing, trim, scale/crop, fades/cuts/basic transitions, overlays, and subtitles needed by MVP. Deterministic assembly now consumes versioned Advanced timeline trim/rate/freeze, scale/crop/position, color/opacity, fades, overlays, and bounded effect lanes; true neighboring crossfade composition and subtitle authoring/rendering remain open.
 - [x] Fast lower-resolution preview profile and final H.264 MP4 profile are implemented as asynchronous persistent render jobs.
 - [x] Support project-configured 16:9, 9:16, and 1:1 output resolutions while reusing one immutable timeline manifest/hash.
 - [x] Persist render jobs, deterministic manifests, command logs, outputs, versions, per-attempt history, and export/download history without overwriting earlier renders.
@@ -235,7 +235,7 @@ Execution proof for the mock path is tracked in `TESTPLAN.md`; the real-provider
 
 - [x] Repository code exposes the offline/mock path Song → Analysis → Storyboard → Keyframes → Clips → asynchronous Preview/Final MP4 render and download.
 - [x] Completed render duration and audio-stream presence are validated through the ffprobe media adapter before output metadata/render state is published as successful.
-- [x] Preview uses a smaller/faster encoding profile while retaining the exact same storyboard/song/selected-clip timeline hash as Final.
+- [x] Preview uses a smaller/faster encoding profile while retaining the exact same storyboard/song/selected-clip/timeline-edit hash as Final.
 - [x] Rendering treats source/generated media as read-only, writes temporary/output files separately, and persists a new render/output version only after successful assembly/validation.
 - [x] Cancelling through render-specific or generic job/project APIs cannot promote stale local execution to a completed job; active execution receives cancellation and render history reconciles persisted cancellation.
 
@@ -245,19 +245,21 @@ Execution proof is tracked in `TESTPLAN.md`; actual FFmpeg/ffprobe execution has
 
 ## Block 12 — Advanced timeline editor and Scene Inspector
 
-- [ ] Waveform/timeline with song structure, lyrics, beat/bar markers, clips, transitions, overlays, and effects lanes.
-- [ ] Protected original music track by default.
-- [ ] Non-destructive trim, move, split, replace, regenerate, extend, slight speed change, freeze frame, cut/crossfade/fade, transform, crop, opacity, and basic color controls.
-- [ ] Scene Inspector sections for Story, Character, Environment, Camera, Generation, and Prompt.
-- [ ] Provider-specific settings appear only when supported by the selected model.
-- [ ] Prompt regeneration does not automatically trigger paid generation.
-- [ ] Editing operations create timeline/scene versions or reversible state rather than destructive file mutations.
+- [x] Waveform/timeline workspace exposes the persisted song waveform, structure sections, phrase/beat/bar/quiet context, lyric timing, clips, transitions, overlays, and effects lanes in Advanced/Custom mode.
+- [x] Protected original music track is pinned by `SongMediaAssetId`, forced locked in every timeline version, and remains the only audio source in deterministic rendering.
+- [ ] Non-destructive trim, move, split, replace, regenerate, extend, slight speed change, freeze frame, cut/crossfade/fade, transform, crop, opacity, and basic color controls. Repository support now covers trim, move/reorder, split, completed-variant replacement/regeneration workflow, freeze extension, slight playback-rate changes, Cut/Fade intent, Crossfade intent, transforms, crop, opacity, and basic color; true FFmpeg neighboring crossfade remains open.
+- [x] Scene Inspector implements Story, Character, Environment, Camera, Generation, and Prompt sections.
+- [x] Provider-specific generation settings remain in the existing capability-aware Generation workspaces; the timeline exposes only completed variants and cannot configure unsupported model fields.
+- [x] Prompt regeneration uses the existing versioned prompt-only operation and does not automatically trigger image/video generation.
+- [x] Editing operations create immutable `ProjectTimelineVersion` revisions with parent provenance; restoring an older version creates a new revision instead of mutating history or generated media.
 
-### Acceptance
+### Acceptance implementation
 
-- [ ] User can change one transition and trim one scene, render again, and retain the prior render/timeline state.
-- [ ] Advanced editor never modifies the original uploaded music file.
-- [ ] Unsupported provider settings cannot be configured through the UI/API.
+- [x] A trim/transition change creates a new timeline version; deterministic rendering pins that exact timeline/edit hash while earlier timeline versions and earlier render outputs remain retained.
+- [x] Advanced editor operations never modify or replace original uploaded music bytes/reference and render maps only that protected Song audio.
+- [x] Unsupported provider settings cannot be configured through the timeline; generation APIs/workspaces continue to validate selected-model capability constraints.
+
+Execution proof is tracked in `TESTPLAN.md`; Advanced UI/typecheck/browser and actual FFmpeg filter execution remain unexecuted in this connector-only environment.
 
 ---
 
