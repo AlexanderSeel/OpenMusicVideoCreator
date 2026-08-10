@@ -2,7 +2,7 @@
 
 OpenMusicVideoCreator is an AI-assisted music-video studio built around an editable, resumable workflow:
 
-**Song → Analysis → Storyboard → Keyframes → Animated clips → Review/regenerate → Final video**
+**Song → Analysis → Storyboard → Keyframes → Animated clips → Review/regenerate → Advanced edit → Final video**
 
 The product specification is `AI_Music_Video_Studio_Master_Prompt.md`.
 
@@ -12,7 +12,7 @@ The product specification is `AI_Music_Video_Studio_Master_Prompt.md`.
 
 ## Current implementation
 
-Repository-side implementation now covers Blocks 1–8 plus the **offline/mock paths of Blocks 9 and 10**. Real image/video provider integrations remain deliberately open until the complete mock validation matrix in `TESTPLAN.md` has actually passed.
+Repository-side implementation covers Blocks 1–11 and most of the **versioned Advanced timeline foundation in Block 12**, plus the offline/mock generation paths of Blocks 9 and 10. Real image/video provider integrations remain deliberately open until the complete mock validation matrix in `TESTPLAN.md` has actually passed.
 
 Implemented capabilities include:
 
@@ -28,26 +28,31 @@ Implemented capabilities include:
 - project-specific Character outfit/continuity/state
 - provider-independent capability contracts and credential references
 - offline mock Director/Image/Video providers
-- persistent asynchronous job engine with dependencies, retries, waiting states, provider task IDs, startup recovery, and SSE updates
+- persistent asynchronous job engine with dependencies, retries, waiting states, provider task IDs, startup recovery, SSE updates, and active local cancellation signaling
 - versioned AI Director, Visual Arc, storyboard, scene editing, and prompt history
 - Start/End keyframe generation with immutable prompt provenance
 - continuity-aware Character/Style/Location reference routing with provider reference limits
 - non-destructive keyframe variants, compare/select/delete/regenerate, per-scene settings, and approval before animation
 - scene image-to-video generation from approved keyframes
 - non-destructive animated clip variants with prompt/keyframe/job/provider/model/cost provenance
-- capability-aware duration/aspect/resolution/end-frame validation
-- optional compatible-provider fallback; Custom mode can disable fallback
-- generated clip persistence and browser preview endpoints
-- global Generation Queue UI driven by the persisted job list plus SSE notifications
-- job pause/resume/retry/restart/cancel plus project/scene scope controls
-- Simple Mode automatic routing with provider-specific controls hidden; Advanced/Custom progressively expose supported settings
+- capability-aware duration/aspect/resolution/end-frame validation and compatible-provider fallback
+- global Generation Queue UI driven by persisted jobs plus SSE notifications
+- deterministic Preview/Final MP4 render jobs using the protected original Song as output audio
+- render manifests with storyboard/selected-clip/timeline provenance and SHA-256 decision hashes
+- ffprobe validation before render success, versioned render/attempt history, cancel/retry, partial-output cleanup, and downloads
+- versioned Advanced timeline with protected Song, trim/move/split/replace, playback-rate/freeze, transforms/crop/color/opacity, transition intent, overlays/effects, and reversible version restore
+- Advanced music-reference lanes reusing persisted waveform/sections/phrases/beats/bars/quiet ranges/lyric timing
+- Scene Inspector sections for Story, Character, Environment, Camera, Generation, and Prompt
+- Prompt-only regeneration without automatically starting paid generation
 
 See:
 
 - `docs/BLOCK9_KEYFRAME_GENERATION.md`
 - `docs/BLOCK10_VIDEO_GENERATION.md`
+- `docs/BLOCK11_RENDERING.md`
+- `docs/BLOCK12_ADVANCED_TIMELINE.md`
 
-Deterministic final rendering, full Advanced timeline editing, QA/smart routing/cost caps, release hardening, and real-provider integrations remain in later/open PLAN work.
+Still open in the current PLAN include real image/video providers, true neighboring FFmpeg crossfade composition, subtitle authoring/rendering, remaining Advanced timeline polish, QA/model routing/budgets/state curves, and release hardening.
 
 ## Prerequisites
 
@@ -57,7 +62,7 @@ Deterministic final rendering, full Advanced timeline editing, QA/smart routing/
 - Git
 - **FFmpeg + ffprobe** on `PATH`
 
-FFmpeg/ffprobe are runtime requirements for song analysis and visual-reference previews. Block 11 will extend the deterministic FFmpeg boundary to final rendering.
+FFmpeg/ffprobe are runtime requirements for song analysis, visual-reference previews, deterministic project rendering, and render validation.
 
 ## Install
 
@@ -96,15 +101,17 @@ npm run dev:web
 
 ### Simple
 
-Simple Mode keeps provider internals out of the primary workflow. It provides project/song/library/planning/generation controls while automatically routing supported mock/provider capabilities.
+Simple Mode keeps provider internals and the Advanced timeline out of the primary workflow. It provides project/song/library/planning/generation/render controls while automatically routing supported capabilities.
 
-Provider IDs, model IDs, seeds, negative prompts, raw provider JSON, and provider-specific animation controls are hidden from Simple Mode.
+Provider IDs, model IDs, seeds, negative prompts, raw provider JSON, provider-specific animation controls, and Advanced timeline inspector controls are hidden from Simple Mode.
 
 ### Advanced / Expert Custom
 
-Advanced/Custom progressively expose capability-supported generation settings. Current keyframe/video controls include provider/model selection, supported resolution/duration, optional End-frame use, seed/negative prompt where supported, and Custom fallback policy.
+Advanced/Custom progressively expose capability-supported generation settings plus the versioned timeline editor.
 
-Unsupported settings are rejected by the backend rather than merely hidden by the frontend.
+Current generation controls include provider/model selection, supported resolution/duration, optional End-frame use, seed/negative prompt where supported, and Custom fallback policy.
+
+The Advanced timeline exposes only provider-independent edit decisions and existing completed variants; unsupported provider/model fields are not invented by the timeline editor. Backend generation APIs continue to reject unsupported settings.
 
 ## Song analysis and Structure Map
 
@@ -120,7 +127,9 @@ After a saved project has a Song attached, local analysis:
 
 Saving Structure Map edits creates a new version instead of overwriting history.
 
-Supplied lyrics remain authoritative. Optional transcription segments only contribute timing/confidence metadata and never silently rewrite the project lyrics.
+Supplied lyrics remain authoritative. Optional transcription segments only contribute timing/confidence metadata and never silently rewrite project lyrics.
+
+Advanced timeline music-reference lanes reuse this same persisted analysis contract; they do not create a parallel waveform or rhythm model.
 
 ## Reusable visual library
 
@@ -142,39 +151,11 @@ Scene edits/reordering create new storyboard/prompt versions. Director Intent re
 
 Downstream keyframes/clips reference immutable `PromptVersionId` values rather than copying unauditable prompt text.
 
-## Keyframe generation
+## Keyframe and scene video generation
 
-Each scene can create a Start keyframe and optional End keyframe through the persistent job engine.
+Each scene can create a Start keyframe and optional End keyframe through the persistent job engine. Regeneration appends variants; selection is only a reference, so older successful variants remain intact.
 
-The coordinator:
-
-- resolves an enabled image-generation capability/model
-- validates provider/model settings
-- loads the selected immutable prompt version
-- prioritizes Character outfit/base references, then Style/Location references
-- caps references at the provider model's `MaxReferences`
-- persists a planned variant before enqueueing the job
-- materializes generated provider output into local keyframe media
-- records provider/model/job/media/cost provenance
-
-Regeneration appends variants. Selecting a new completed variant changes only the selection reference; older successful variants remain intact.
-
-Animation requires approval of the current completed Start selection and optional End selection.
-
-## Scene video generation
-
-Approved keyframes can be animated via `scene.video.generate` jobs.
-
-The video coordinator:
-
-- routes `ImageToVideo`-capable models with Start-frame support
-- validates optional End-frame support
-- resolves the nearest supported duration to the storyboard scene
-- preserves project aspect ratio and supported resolution
-- stores dependencies on approved keyframe jobs
-- enqueues without blocking HTTP on provider work
-- materializes successful video output into generated project media
-- persists a non-destructive `SceneClipVariant`
+Animation requires approval of the current completed Start selection and optional End selection. `scene.video.generate` jobs route `ImageToVideo` capabilities, validate supported duration/aspect/resolution/end-frame semantics, and persist non-destructive `SceneClipVariant` provenance.
 
 ### Fallback
 
@@ -182,27 +163,63 @@ When enabled, fallback candidates are included only if they can preserve the exa
 
 Fallback is permitted for operational/provider failures such as quota/credits, rate limit, outage, authentication, unsupported adapter capability, network, timeout, and transient failure. Moderation rejection, invalid parameters, and permanent failures do not silently switch providers.
 
-If a fallback succeeds, the clip variant records the provider/model that actually produced the asset. Custom mode can disable fallback.
+Custom mode can disable fallback.
 
 ## Persistent Generation Queue
 
 The frontend Generation Queue first reads persisted jobs from `GET /api/jobs/` and then consumes `/api/jobs/events` via `EventSource`.
 
-SSE is only a notification mechanism; DuckDB jobs remain authoritative. Reconnect causes persisted state to be reloaded rather than assuming all in-memory events were received.
+SSE is only a notification mechanism; DuckDB jobs remain authoritative. Reconnect reloads persisted state.
 
-Queue rows expose:
+Queue actions include job pause/resume/retry/restart/cancel plus project/scene scoped controls. Cancellation also signals already-running local work such as FFmpeg so a stale local execution cannot later overwrite persisted `Cancelled` state.
 
-- job type
-- state
-- elapsed time
-- attempts/retries
-- estimated/actual cost
-- next-run scheduling
-- errors
-- provider/model in Advanced/Custom mode
-- pause/resume/retry/restart/cancel actions
+## Advanced timeline
 
-Existing project and scene scope actions use the same persisted job graph.
+Advanced/Custom mode can initialize a `ProjectTimelineVersion` from the current storyboard and selected completed clip variants.
+
+Every version pins:
+
+- exact `StoryboardVersionId`
+- exact original `SongMediaAssetId`
+- parent timeline version
+- protected music flag
+- ordered scene/variant/media provenance
+- trim/playback/freeze settings
+- transition intent/duration
+- transform/crop/opacity/color settings
+- overlay and effect lanes
+
+Edits create new versions. Restoring an older version creates another new version; generated media and original Song bytes are never rewritten.
+
+The Scene Inspector contains Story, Character, Environment, Camera, Generation, and Prompt sections. Prompt refinement uses the existing prompt-versioning operation and does not auto-start generation.
+
+`Crossfade` is persisted as explicit transition intent, but current deterministic rendering treats it with fade behavior rather than claiming true neighboring `xfade` composition. That remains an open PLAN item.
+
+## Deterministic rendering
+
+Preview and Final export run as persistent `project.render` jobs.
+
+`ProjectRenderService` prefers the latest Advanced timeline only when its exact Storyboard and Song IDs still match the current project state. Otherwise it falls back to the current storyboard/selected clips instead of silently applying stale edits.
+
+The immutable render manifest pins source clip/media IDs, edit parameters, overlays/effects, original Song, optional timeline version, output profile, and a deterministic timeline SHA-256 hash.
+
+`FfmpegProjectRenderEngine` uses `ProcessStartInfo.ArgumentList` and safe media-path resolution. Current render filters consume:
+
+- source trim
+- playback-rate change
+- freeze extension
+- crop/scale/position
+- brightness/contrast/saturation
+- opacity
+- fade transition behavior
+- overlays
+- Fade-to-black / Grayscale / Vignette effects
+
+Generated clip/overlay audio is never mapped. The project's protected original Song is the only output audio source.
+
+After FFmpeg output is stored, ffprobe validates duration and audio-stream presence before the render is marked successful. Failed/cancelled/invalid outputs are cleaned up; source/generated inputs remain read-only.
+
+Render history is versioned and records attempts, deterministic command logs, output media, state/errors, and provenance. Cancel/retry retains the same immutable manifest for a given render version.
 
 ## API overview
 
@@ -219,31 +236,40 @@ Existing project and scene scope actions use the same persisted job graph.
 /api/projects/{projectId}/director/...
 ```
 
-### Keyframes
+### Keyframes / animated clips
 
 ```text
-GET    /api/projects/{projectId}/scenes/{sceneId}/keyframes/
-GET    /api/projects/{projectId}/scenes/{sceneId}/keyframes/settings
-PUT    /api/projects/{projectId}/scenes/{sceneId}/keyframes/settings
-POST   /api/projects/{projectId}/scenes/{sceneId}/keyframes/generate
-GET    /api/projects/{projectId}/scenes/{sceneId}/keyframes/{variantId}/preview
-POST   /api/projects/{projectId}/scenes/{sceneId}/keyframes/{variantId}/select
-DELETE /api/projects/{projectId}/scenes/{sceneId}/keyframes/{variantId}
-GET    /api/projects/{projectId}/scenes/{sceneId}/keyframes/approval
-POST   /api/projects/{projectId}/scenes/{sceneId}/keyframes/approval
-DELETE /api/projects/{projectId}/scenes/{sceneId}/keyframes/approval
+/api/projects/{projectId}/scenes/{sceneId}/keyframes/...
+/api/projects/{projectId}/scenes/{sceneId}/clips/...
 ```
 
-### Animated clips
+### Advanced timeline
 
 ```text
-GET    /api/projects/{projectId}/scenes/{sceneId}/clips/
-GET    /api/projects/{projectId}/scenes/{sceneId}/clips/settings
-PUT    /api/projects/{projectId}/scenes/{sceneId}/clips/settings
-POST   /api/projects/{projectId}/scenes/{sceneId}/clips/generate
-GET    /api/projects/{projectId}/scenes/{sceneId}/clips/{variantId}/preview
-POST   /api/projects/{projectId}/scenes/{sceneId}/clips/{variantId}/select
-DELETE /api/projects/{projectId}/scenes/{sceneId}/clips/{variantId}
+GET    /api/projects/{projectId}/timeline/
+GET    /api/projects/{projectId}/timeline/versions
+POST   /api/projects/{projectId}/timeline/initialize
+POST   /api/projects/{projectId}/timeline/reset
+PUT    /api/projects/{projectId}/timeline/clips/{clipId}
+POST   /api/projects/{projectId}/timeline/clips/reorder
+POST   /api/projects/{projectId}/timeline/clips/{clipId}/replace
+POST   /api/projects/{projectId}/timeline/clips/{clipId}/split
+PUT    /api/projects/{projectId}/timeline/overlays
+DELETE /api/projects/{projectId}/timeline/overlays/{overlayId}
+PUT    /api/projects/{projectId}/timeline/effects
+DELETE /api/projects/{projectId}/timeline/effects/{effectId}
+POST   /api/projects/{projectId}/timeline/restore/{versionId}
+```
+
+### Project renders
+
+```text
+GET  /api/projects/{projectId}/renders/
+POST /api/projects/{projectId}/renders/
+GET  /api/projects/{projectId}/renders/{renderId}
+POST /api/projects/{projectId}/renders/{renderId}/cancel
+POST /api/projects/{projectId}/renders/{renderId}/retry
+GET  /api/projects/{projectId}/renders/{renderId}/output
 ```
 
 ### Providers / jobs
@@ -284,7 +310,7 @@ projects/
 
 DuckDB stores structured metadata, jobs, dependencies, attempts, analysis/library metadata, and project/application settings. Large audio/image/video bytes remain filesystem media, not database blobs.
 
-Visual Arc/storyboard/prompt history, keyframe variants/settings/approvals, and clip variants/settings use durable project settings where a separate schema table is not yet required. Generated media metadata remains in `media_assets`.
+Versioned project-settings repositories currently persist Visual Arc/storyboard/prompt history, keyframe settings/variants/approval, clip settings/variants, render history, and Advanced timeline versions. Generated/rendered media metadata remains in `media_assets`.
 
 ## Provider credentials
 
@@ -318,7 +344,7 @@ Or run the repository validation scripts:
 ./scripts/validate.ps1
 ```
 
-**Do not infer success from source inspection.** Blocks 9/10 contain repository-side tests, but the new code is not considered validated until the current `TESTPLAN.md` matrix actually runs successfully.
+**Do not infer success from source inspection.** The latest Blocks 9–12 repository changes are not considered validated until the current `TESTPLAN.md` matrix actually runs successfully.
 
 ## Repository structure
 
@@ -332,6 +358,8 @@ frontend/
     library/
     planning/
     generation/
+    timeline/
+    rendering/
 
 backend/
   src/
@@ -346,6 +374,8 @@ backend/
 docs/
   BLOCK9_KEYFRAME_GENERATION.md
   BLOCK10_VIDEO_GENERATION.md
+  BLOCK11_RENDERING.md
+  BLOCK12_ADVANCED_TIMELINE.md
 ```
 
 ## Development rules
