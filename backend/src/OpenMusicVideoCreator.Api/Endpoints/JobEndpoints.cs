@@ -99,7 +99,7 @@ public static class JobEndpoints
         MapJobAction(group, "resume", (service, id, token) => service.ResumeAsync(id, token));
         MapJobAction(group, "retry", (service, id, token) => service.RetryAsync(id, token));
         MapJobAction(group, "restart", (service, id, token) => service.RestartAsync(id, token));
-        MapJobAction(group, "cancel", (service, id, token) => service.CancelAsync(id, token));
+        MapJobAction(group, "cancel", (service, id, token) => service.CancelAsync(id, token), signalCancellation: true);
 
         group.MapPost("/projects/{projectId:guid}/pause", async (
             Guid projectId,
@@ -120,9 +120,17 @@ public static class JobEndpoints
         group.MapPost("/projects/{projectId:guid}/cancel", async (
             Guid projectId,
             JobService service,
+            IJobExecutionCancellationRegistry executionCancellations,
             CancellationToken cancellationToken) =>
-            Results.Ok(new JobScopeActionResponse(
-                await service.CancelProjectAsync(projectId, cancellationToken))))
+        {
+            var matching = (await service.ListAsync(cancellationToken))
+                .Where(job => job.ProjectId == projectId)
+                .Select(job => job.Id)
+                .ToArray();
+            var count = await service.CancelProjectAsync(projectId, cancellationToken);
+            foreach (var jobId in matching) executionCancellations.Cancel(jobId);
+            return Results.Ok(new JobScopeActionResponse(count));
+        })
             .WithName("CancelProjectJobs");
 
         group.MapPost("/projects/{projectId:guid}/scenes/{sceneId:guid}/pause", async (
@@ -147,9 +155,17 @@ public static class JobEndpoints
             Guid projectId,
             Guid sceneId,
             JobService service,
+            IJobExecutionCancellationRegistry executionCancellations,
             CancellationToken cancellationToken) =>
-            Results.Ok(new JobScopeActionResponse(
-                await service.CancelSceneAsync(projectId, sceneId, cancellationToken))))
+        {
+            var matching = (await service.ListAsync(cancellationToken))
+                .Where(job => job.ProjectId == projectId && job.SceneId == sceneId)
+                .Select(job => job.Id)
+                .ToArray();
+            var count = await service.CancelSceneAsync(projectId, sceneId, cancellationToken);
+            foreach (var jobId in matching) executionCancellations.Cancel(jobId);
+            return Results.Ok(new JobScopeActionResponse(count));
+        })
             .WithName("CancelSceneJobs");
 
         group.MapGet("/events", StreamJobEventsAsync)
@@ -162,11 +178,13 @@ public static class JobEndpoints
     private static void MapJobAction(
         RouteGroupBuilder group,
         string actionName,
-        Func<JobService, Guid, CancellationToken, Task<bool>> action)
+        Func<JobService, Guid, CancellationToken, Task<bool>> action,
+        bool signalCancellation = false)
     {
         group.MapPost($"/{{id:guid}}/{actionName}", async (
             Guid id,
             JobService service,
+            IJobExecutionCancellationRegistry executionCancellations,
             CancellationToken cancellationToken) =>
         {
             if (await service.GetAsync(id, cancellationToken) is null)
@@ -174,9 +192,16 @@ public static class JobEndpoints
                 return (IResult)Results.NotFound();
             }
 
-            return await action(service, id, cancellationToken)
-                ? (IResult)Results.Ok()
-                : Results.Conflict();
+            if (!await action(service, id, cancellationToken))
+            {
+                return Results.Conflict();
+            }
+
+            if (signalCancellation)
+            {
+                executionCancellations.Cancel(id);
+            }
+            return Results.Ok();
         });
     }
 
