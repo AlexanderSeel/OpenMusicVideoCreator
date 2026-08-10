@@ -115,21 +115,24 @@ export function ProjectRenderWorkspace({ projectId }: ProjectRenderWorkspaceProp
       <div className="render-actions">
         <button className="button" type="button" disabled={busyKind !== null || busyRenderId !== null} onClick={() => void queue("Preview")}>{busyKind === "Preview" ? "Queuing…" : "Render preview"}</button>
         <button className="button button-primary" type="button" disabled={busyKind !== null || busyRenderId !== null} onClick={() => void queue("Final")}>{busyKind === "Final" ? "Queuing…" : "Render final MP4"}</button>
-        <p>Both outputs use the same selected scene timeline and original uploaded Song. Preview uses a smaller/faster encoding profile.</p>
+        <p>Both outputs use the same selected scene/Advanced timeline decisions and original uploaded Song. Preview uses a smaller/faster encoding profile.</p>
       </div>
 
       <div className="render-history" aria-label="Render history">
         {renders.length === 0 ? <p className="render-empty-state">No renders yet. Every render is versioned and non-destructive.</p> : renders.map((render) => {
           const attempts = render.attempts ?? [];
           const busy = busyRenderId === render.id;
+          const overlays = render.manifest.overlays ?? [];
+          const effects = render.manifest.effects ?? [];
           return (
             <article className="render-card" key={render.id}>
               <div className="render-card-heading">
-                <div><strong>{render.manifest.kind} · v{render.version}</strong><span>{render.manifest.width}×{render.manifest.height} · {formatDuration(render.manifest.durationSeconds)} · {render.manifest.clips.length} scenes</span></div>
+                <div><strong>{render.manifest.kind} · v{render.version}</strong><span>{render.manifest.width}×{render.manifest.height} · {formatDuration(render.manifest.durationSeconds)} · {render.manifest.clips.length} scenes · {overlays.length} overlays · {effects.length} effects</span></div>
                 <span className={`render-state state-${render.state.toLowerCase()}`}>{render.state}</span>
               </div>
               <dl className="render-provenance">
-                <div><dt>Timeline</dt><dd title={render.manifest.timelineSha256}>{render.manifest.timelineSha256.slice(0, 12)}…</dd></div>
+                <div><dt>Decision hash</dt><dd title={render.manifest.timelineSha256}>{render.manifest.timelineSha256.slice(0, 12)}…</dd></div>
+                <div><dt>Advanced timeline</dt><dd title={render.manifest.timelineVersionId ?? "Storyboard baseline"}>{render.manifest.timelineVersionId ? `${render.manifest.timelineVersionId.slice(0, 8)}…` : "Storyboard baseline"}</dd></div>
                 <div><dt>Storyboard</dt><dd title={render.manifest.storyboardVersionId}>{render.manifest.storyboardVersionId.slice(0, 8)}…</dd></div>
                 <div><dt>Original song</dt><dd title={render.manifest.songMediaAssetId}>{render.manifest.songMediaAssetId.slice(0, 8)}…</dd></div>
                 <div><dt>Attempts</dt><dd>{attempts.length}</dd></div>
@@ -165,7 +168,7 @@ export function ProjectRenderWorkspace({ projectId }: ProjectRenderWorkspaceProp
 }
 
 function RenderHeading() {
-  return <div className="structure-heading"><div><p className="eyebrow">Assembly & export</p><h2 id="render-heading">Project render</h2><span>Selected scene clips → deterministic timeline → original Song audio → MP4.</span></div></div>;
+  return <div className="structure-heading"><div><p className="eyebrow">Assembly & export</p><h2 id="render-heading">Project render</h2><span>Versioned scene/timeline decisions → original Song audio → deterministic MP4.</span></div></div>;
 }
 
 function formatDuration(seconds: number): string {
