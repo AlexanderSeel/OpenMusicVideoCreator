@@ -5,10 +5,12 @@ using OpenMusicVideoCreator.Application.Abstractions;
 using OpenMusicVideoCreator.Application.Generation;
 using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Application.Planning;
+using OpenMusicVideoCreator.Application.Timeline;
 using OpenMusicVideoCreator.Domain.Generation;
 using OpenMusicVideoCreator.Domain.Jobs;
 using OpenMusicVideoCreator.Domain.Projects;
 using OpenMusicVideoCreator.Domain.Rendering;
+using OpenMusicVideoCreator.Domain.Timeline;
 
 namespace OpenMusicVideoCreator.Application.Rendering;
 
@@ -52,6 +54,7 @@ public sealed class ProjectRenderService
     private readonly IJobQueue _jobs;
     private readonly JobService _jobService;
     private readonly TimeProvider _timeProvider;
+    private readonly IProjectTimelineRepository? _timelines;
 
     public ProjectRenderService(
         IProjectRepository projects,
@@ -61,7 +64,8 @@ public sealed class ProjectRenderService
         IProjectRenderRepository renders,
         IJobQueue jobs,
         JobService jobService,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IProjectTimelineRepository? timelines = null)
     {
         _projects = projects;
         _storyboards = storyboards;
@@ -71,6 +75,7 @@ public sealed class ProjectRenderService
         _jobs = jobs;
         _jobService = jobService;
         _timeProvider = timeProvider;
+        _timelines = timelines;
     }
 
     public async Task<IReadOnlyList<ProjectRenderRecord>> ListAsync(
@@ -114,42 +119,54 @@ public sealed class ProjectRenderService
         }
 
         var projectClips = await _clips.ListByProjectAsync(projectId, cancellationToken);
-        var timeline = new List<RenderTimelineClip>(storyboard.Scenes.Count);
-        var dependencies = new List<Guid>(storyboard.Scenes.Count);
-        var timelineStart = 0d;
-
-        foreach (var scene in storyboard.Scenes.OrderBy(scene => scene.Sequence))
+        var advancedTimeline = _timelines is null ? null : await _timelines.GetLatestAsync(projectId, cancellationToken);
+        if (advancedTimeline is not null &&
+            (advancedTimeline.StoryboardVersionId != storyboard.Id || advancedTimeline.SongMediaAssetId != song.Id))
         {
-            var selected = projectClips.SingleOrDefault(clip =>
-                clip.SceneId == scene.Id &&
-                clip.IsSelected &&
-                clip.State == GenerationVariantState.Completed &&
-                clip.MediaAssetId is not null)
-                ?? throw new InvalidOperationException($"Scene {scene.Sequence} requires one selected completed clip before rendering.");
-            var media = await _mediaAssets.GetAsync(selected.MediaAssetId!.Value, cancellationToken)
-                ?? throw new InvalidOperationException($"Selected clip media for Scene {scene.Sequence} is missing.");
-            if (media.ProjectId != projectId || !media.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException($"Selected clip media for Scene {scene.Sequence} is not a project video asset.");
-            }
-
-            var duration = scene.DurationSeconds;
-            timeline.Add(new RenderTimelineClip(
-                scene.Id,
-                scene.Sequence,
-                selected.Id,
-                media.Id,
-                timelineStart,
-                duration,
-                scene.TransitionIn ?? string.Empty));
-            timelineStart += duration;
-            if (selected.JobId is Guid dependencyId)
-            {
-                dependencies.Add(dependencyId);
-            }
+            advancedTimeline = null;
         }
 
+        IReadOnlyList<RenderTimelineClip> timeline;
+        IReadOnlyList<TimelineOverlay> overlays;
+        IReadOnlyList<TimelineEffect> effects;
+        Guid? timelineVersionId;
+        if (advancedTimeline is not null)
+        {
+            timeline = await BuildAdvancedTimelineAsync(projectId, advancedTimeline, projectClips, cancellationToken);
+            overlays = advancedTimeline.Overlays;
+            effects = advancedTimeline.Effects;
+            timelineVersionId = advancedTimeline.Id;
+            var storyboardDuration = storyboard.Scenes.Max(scene => scene.EndSeconds);
+            if (Math.Abs(advancedTimeline.DurationSeconds - storyboardDuration) > 0.002)
+            {
+                throw new InvalidOperationException("Advanced timeline must retain the storyboard/song duration before rendering.");
+            }
+            foreach (var overlay in overlays)
+            {
+                var media = await _mediaAssets.GetAsync(overlay.MediaAssetId, cancellationToken)
+                    ?? throw new InvalidOperationException($"Overlay media '{overlay.MediaAssetId}' is missing.");
+                if (media.ProjectId != projectId)
+                {
+                    throw new InvalidOperationException("Advanced timeline overlay media belongs to another project.");
+                }
+            }
+        }
+        else
+        {
+            timeline = await BuildStoryboardTimelineAsync(projectId, storyboard, projectClips, cancellationToken);
+            overlays = [];
+            effects = [];
+            timelineVersionId = null;
+        }
+
+        var dependencies = timeline
+            .Select(item => projectClips.FirstOrDefault(variant => variant.Id == item.ClipVariantId)?.JobId)
+            .OfType<Guid>()
+            .Distinct()
+            .ToArray();
+        var durationSeconds = timeline.Max(item => item.TimelineStartSeconds + item.DurationSeconds);
         var (width, height) = ResolveOutputSize(project, kind);
+        var timelineHash = ComputeTimelineHash(storyboard.Id, song.Id, timeline, overlays, effects);
         var manifest = new ProjectRenderManifest(
             project.Id,
             storyboard.Id,
@@ -159,8 +176,11 @@ public sealed class ProjectRenderService
             height,
             30,
             timeline,
-            timelineStart,
-            ComputeTimelineHash(storyboard.Id, song.Id, timeline));
+            durationSeconds,
+            timelineHash,
+            timelineVersionId,
+            overlays,
+            effects);
         manifest.Validate();
 
         var existing = await _renders.ListAsync(projectId, cancellationToken);
@@ -192,7 +212,7 @@ public sealed class ProjectRenderService
                 MaxRetries: 1,
                 EstimatedCost: 0m,
                 Currency: "USD"),
-            dependencies.Distinct().ToArray(),
+            dependencies,
             cancellationToken);
 
         record = record with
@@ -380,6 +400,81 @@ public sealed class ProjectRenderService
         JsonSerializer.Deserialize<ProjectRenderJobPayload>(json, JsonOptions)
         ?? throw new InvalidDataException("Render job payload could not be deserialized.");
 
+    private async Task<IReadOnlyList<RenderTimelineClip>> BuildStoryboardTimelineAsync(
+        Guid projectId,
+        StoryboardVersion storyboard,
+        IReadOnlyList<SceneClipVariant> projectClips,
+        CancellationToken cancellationToken)
+    {
+        var timeline = new List<RenderTimelineClip>(storyboard.Scenes.Count);
+        foreach (var scene in storyboard.Scenes.OrderBy(scene => scene.Sequence))
+        {
+            var selected = projectClips.SingleOrDefault(clip =>
+                clip.SceneId == scene.Id && clip.IsSelected && clip.State == GenerationVariantState.Completed && clip.MediaAssetId is not null)
+                ?? throw new InvalidOperationException($"Scene {scene.Sequence} requires one selected completed clip before rendering.");
+            var media = await _mediaAssets.GetAsync(selected.MediaAssetId!.Value, cancellationToken)
+                ?? throw new InvalidOperationException($"Selected clip media for Scene {scene.Sequence} is missing.");
+            ValidateProjectVideo(projectId, media.ProjectId, media.MimeType, scene.Sequence);
+            var transition = ParseTransition(scene.TransitionIn);
+            timeline.Add(new RenderTimelineClip(
+                scene.Id,
+                scene.Sequence,
+                selected.Id,
+                media.Id,
+                scene.StartSeconds,
+                scene.DurationSeconds,
+                scene.TransitionIn ?? string.Empty,
+                SourceInSeconds: 0,
+                SourceDurationSeconds: media.Duration?.TotalSeconds ?? selected.Duration.TotalSeconds,
+                PlaybackRate: 1,
+                FreezeExtensionSeconds: Math.Max(0, scene.DurationSeconds - (media.Duration?.TotalSeconds ?? selected.Duration.TotalSeconds)),
+                Transform: TimelineClipTransform.Default,
+                Color: TimelineColorAdjustment.Neutral,
+                TransitionKind: transition,
+                TransitionDurationSeconds: transition == TimelineTransitionKind.Cut ? 0 : Math.Min(0.35, scene.DurationSeconds / 2)));
+        }
+        return timeline;
+    }
+
+    private async Task<IReadOnlyList<RenderTimelineClip>> BuildAdvancedTimelineAsync(
+        Guid projectId,
+        ProjectTimelineVersion advancedTimeline,
+        IReadOnlyList<SceneClipVariant> projectClips,
+        CancellationToken cancellationToken)
+    {
+        var timeline = new List<RenderTimelineClip>(advancedTimeline.Clips.Count);
+        foreach (var clip in advancedTimeline.Clips.OrderBy(item => item.Sequence))
+        {
+            var variant = projectClips.SingleOrDefault(item => item.Id == clip.ClipVariantId && item.State == GenerationVariantState.Completed && item.MediaAssetId == clip.MediaAssetId)
+                ?? throw new InvalidOperationException($"Timeline clip {clip.Sequence} no longer references a completed scene variant.");
+            var media = await _mediaAssets.GetAsync(clip.MediaAssetId, cancellationToken)
+                ?? throw new InvalidOperationException($"Timeline media for clip {clip.Sequence} is missing.");
+            ValidateProjectVideo(projectId, media.ProjectId, media.MimeType, clip.Sequence);
+            if (media.Duration is TimeSpan mediaDuration && clip.SourceInSeconds + clip.SourceDurationSeconds > mediaDuration.TotalSeconds + 0.05)
+            {
+                throw new InvalidOperationException($"Timeline source trim for clip {clip.Sequence} exceeds its media duration.");
+            }
+
+            timeline.Add(new RenderTimelineClip(
+                clip.SceneId,
+                clip.Sequence,
+                variant.Id,
+                clip.MediaAssetId,
+                clip.TimelineStartSeconds,
+                clip.TimelineDurationSeconds,
+                clip.TransitionIn.ToString(),
+                clip.SourceInSeconds,
+                clip.SourceDurationSeconds,
+                clip.PlaybackRate,
+                clip.FreezeExtensionSeconds,
+                clip.Transform,
+                clip.Color,
+                clip.TransitionIn,
+                clip.TransitionDurationSeconds));
+        }
+        return timeline;
+    }
+
     private async Task<ProjectRenderRecord> ReconcileCancelledJobAsync(
         ProjectRenderRecord render,
         CancellationToken cancellationToken)
@@ -438,6 +533,14 @@ public sealed class ProjectRenderService
         await _renders.GetAsync(projectId, renderId, cancellationToken)
         ?? throw new KeyNotFoundException($"Render '{renderId}' was not found.");
 
+    private static void ValidateProjectVideo(Guid projectId, Guid? mediaProjectId, string mimeType, int sequence)
+    {
+        if (mediaProjectId != projectId || !mimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Timeline clip media for position {sequence} is not a project video asset.");
+        }
+    }
+
     private static (int Width, int Height) ResolveOutputSize(MusicVideoProject project, ProjectRenderKind kind)
     {
         if (kind == ProjectRenderKind.Final)
@@ -453,24 +556,56 @@ public sealed class ProjectRenderService
 
     private static int Even(int value) => value % 2 == 0 ? value : value - 1;
 
-    private static string ComputeTimelineHash(Guid storyboardId, Guid songId, IReadOnlyList<RenderTimelineClip> clips)
+    private static TimelineTransitionKind ParseTransition(string? value)
+    {
+        if (value?.Contains("cross", StringComparison.OrdinalIgnoreCase) == true) return TimelineTransitionKind.Crossfade;
+        if (value?.Contains("fade", StringComparison.OrdinalIgnoreCase) == true) return TimelineTransitionKind.Fade;
+        return TimelineTransitionKind.Cut;
+    }
+
+    private static string ComputeTimelineHash(
+        Guid storyboardId,
+        Guid songId,
+        IReadOnlyList<RenderTimelineClip> clips,
+        IReadOnlyList<TimelineOverlay> overlays,
+        IReadOnlyList<TimelineEffect> effects)
     {
         var canonical = new StringBuilder()
             .Append(storyboardId.ToString("N")).Append('|')
             .Append(songId.ToString("N"));
         foreach (var clip in clips.OrderBy(item => item.Sequence))
         {
+            var transform = clip.ResolveTransform();
+            var color = clip.ResolveColor();
             canonical.Append('|')
                 .Append(clip.Sequence).Append(':')
                 .Append(clip.SceneId.ToString("N")).Append(':')
                 .Append(clip.ClipVariantId.ToString("N")).Append(':')
                 .Append(clip.MediaAssetId.ToString("N")).Append(':')
-                .Append(clip.TimelineStartSeconds.ToString("R", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
-                .Append(clip.DurationSeconds.ToString("R", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
-                .Append(clip.TransitionIn);
+                .Append(F(clip.TimelineStartSeconds)).Append(':')
+                .Append(F(clip.DurationSeconds)).Append(':')
+                .Append(F(clip.SourceInSeconds)).Append(':')
+                .Append(F(clip.SourceDurationSeconds ?? clip.DurationSeconds)).Append(':')
+                .Append(F(clip.PlaybackRate)).Append(':')
+                .Append(F(clip.FreezeExtensionSeconds)).Append(':')
+                .Append(clip.TransitionKind ?? TimelineTransitionKind.Cut).Append(':')
+                .Append(F(clip.TransitionDurationSeconds)).Append(':')
+                .Append(F(transform.Scale)).Append(':').Append(F(transform.PositionX)).Append(':').Append(F(transform.PositionY)).Append(':')
+                .Append(F(transform.CropLeft)).Append(':').Append(F(transform.CropTop)).Append(':').Append(F(transform.CropRight)).Append(':').Append(F(transform.CropBottom)).Append(':').Append(F(transform.Opacity)).Append(':')
+                .Append(F(color.Brightness)).Append(':').Append(F(color.Contrast)).Append(':').Append(F(color.Saturation));
+        }
+        foreach (var overlay in overlays.OrderBy(item => item.StartSeconds).ThenBy(item => item.Id))
+        {
+            canonical.Append("|o:").Append(overlay.MediaAssetId.ToString("N")).Append(':').Append(F(overlay.StartSeconds)).Append(':').Append(F(overlay.EndSeconds)).Append(':').Append(F(overlay.PositionX)).Append(':').Append(F(overlay.PositionY)).Append(':').Append(F(overlay.Scale)).Append(':').Append(F(overlay.Opacity));
+        }
+        foreach (var effect in effects.OrderBy(item => item.StartSeconds).ThenBy(item => item.Id))
+        {
+            canonical.Append("|e:").Append(effect.Kind).Append(':').Append(F(effect.StartSeconds)).Append(':').Append(F(effect.EndSeconds)).Append(':').Append(F(effect.Strength));
         }
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString()))).ToLowerInvariant();
     }
+
+    private static string F(double value) => value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
 
     private DateTimeOffset GetUtcNow()
     {
