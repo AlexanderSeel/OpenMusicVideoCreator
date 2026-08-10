@@ -12,7 +12,7 @@ The product specification is `AI_Music_Video_Studio_Master_Prompt.md`.
 
 ## Current implementation
 
-Implemented through PLAN Block 7:
+Implemented through PLAN Block 8:
 
 - Next.js 16 + React 19 + TypeScript frontend
 - ASP.NET Core .NET 10 modular backend: Domain, Application, Infrastructure, API
@@ -36,10 +36,18 @@ Implemented through PLAN Block 7:
 - reference-aware deletion: referenced library items/assets cannot be silently removed
 - provider-independent AI capability contracts, safe credential references, and offline mock Director/Image/Video providers
 - persistent asynchronous job state, dependencies, attempts, retry/wait/recovery semantics, and SSE status updates
-- typed frontend contracts for projects, analysis, libraries, providers, and jobs
+- versioned AI Director planning with all nine Simple/Advanced creative controls
+- editable Visual Arc persisted against an exact song-analysis version
+- music-aware storyboard boundaries with a typical 3-minute target of roughly 20–35 non-rigid scenes
+- structured storyboard scene details for song section/lyric, purpose, emotion, composition, camera, lighting, environment motion, symbolism, continuity, and reusable Character/Style/Location references
+- scene editing and reordering that creates new storyboard versions while preserving timing/provenance constraints
+- separate Director Intent and expanded Final Provider Prompt
+- prompt template/version history and prompt-only regeneration without starting paid generation
+- exact prompt/storyboard/Visual-Arc/song-analysis provenance retained for downstream generated variants
+- typed frontend contracts for projects, analysis, libraries, Director planning, providers, and jobs
 - repository-side automated test code for the implemented domains and critical invariants
 
-Storyboard/Director planning, keyframe/video generation workflows, deterministic final rendering, Advanced Editor, QA/routing/cost controls, and release hardening remain in later PLAN blocks.
+Keyframe/video generation workflows, deterministic final rendering, Advanced Editor, QA/routing/cost controls, and release hardening remain in later PLAN blocks. Some Block 9 persistence/service groundwork already exists, but Block 9 remains unfinished in `PLAN.md`.
 
 ## Prerequisites
 
@@ -211,6 +219,43 @@ PUT /api/projects/{projectId}/characters/states/{characterId}
 
 A Character/Style/Location referenced by a project cannot be deleted until references are removed. An Asset Library entry referenced by a visual-library item is similarly protected.
 
+## AI Director and storyboard
+
+Director planning consumes the exact latest song analysis when a plan is created, together with project lyrics, storyline, meaning, visual direction, mood/genre, attached Characters/Styles/Locations, and project-specific Character continuity state.
+
+The planning controls are provider-independent normalized values for:
+
+- literal ↔ symbolic
+- narrative strength
+- abstraction
+- emotion
+- darkness ↔ warmth
+- surrealism ↔ realism
+- visual complexity
+- acting intensity
+- camera energy
+
+The mock Director creates a versioned Visual Arc and structured storyboard without calling a paid provider. Musical section/phrase boundaries are preferred when they are close enough to the desired scene pacing; hard minimum timing prevents invalid micro-scenes.
+
+Scene edits are non-destructive. Saving a scene creates a new storyboard version and a new prompt version for that scene only. Reordering moves scene content across the existing ordered timing slots so the storyboard remains contiguous. Prompt-only regeneration appends a prompt revision but does not create an image/video job.
+
+Later edits deliberately preserve the storyboard's exact `SongAnalysisId` and referenced Visual Arc/controls. Creating a fresh Director plan is the operation that intentionally adopts the newest song analysis.
+
+### Director API
+
+```text
+POST /api/projects/{projectId}/director/plan
+GET  /api/projects/{projectId}/director/visual-arc
+GET  /api/projects/{projectId}/director/visual-arc/versions
+PUT  /api/projects/{projectId}/director/visual-arc
+GET  /api/projects/{projectId}/director/storyboard
+GET  /api/projects/{projectId}/director/storyboard/versions
+PUT  /api/projects/{projectId}/director/storyboard/scenes/{sceneId}
+POST /api/projects/{projectId}/director/storyboard/reorder
+GET  /api/projects/{projectId}/director/storyboard/scenes/{sceneId}/prompts
+POST /api/projects/{projectId}/director/storyboard/scenes/{sceneId}/prompts/regenerate
+```
+
 ## Project API
 
 ```text
@@ -260,6 +305,8 @@ library_assets
 visual_library_items
 project_character_states
 ```
+
+Director Visual Arc, storyboard, and prompt history are versioned JSON records stored durably through the project-settings repository. This preserves Block 8 restart durability without adding a schema migration solely for planning history.
 
 Large media files are never stored as DuckDB blobs.
 
@@ -354,6 +401,7 @@ frontend/
   src/features/projects/
   src/features/analysis/
   src/features/library/
+  src/features/planning/
 backend/
   src/
     OpenMusicVideoCreator.Domain/
