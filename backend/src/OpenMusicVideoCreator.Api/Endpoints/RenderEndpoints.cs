@@ -64,6 +64,54 @@ public static class RenderEndpoints
             .Produces<ProjectRenderRecord>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
+        group.MapPost("/{renderId:guid}/cancel", async Task<IResult> (
+            Guid projectId,
+            Guid renderId,
+            ProjectRenderService service,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                return Results.Ok(await service.CancelAsync(projectId, renderId, cancellationToken));
+            }
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.Conflict(new { error = exception.Message });
+            }
+        })
+            .WithName("CancelProjectRender")
+            .Produces<ProjectRenderRecord>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
+
+        group.MapPost("/{renderId:guid}/retry", async Task<IResult> (
+            Guid projectId,
+            Guid renderId,
+            ProjectRenderService service,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                return Results.Ok(await service.RetryAsync(projectId, renderId, cancellationToken));
+            }
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.Conflict(new { error = exception.Message });
+            }
+        })
+            .WithName("RetryProjectRender")
+            .Produces<ProjectRenderRecord>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
+
         group.MapGet("/{renderId:guid}/output", async Task<IResult> (
             Guid projectId,
             Guid renderId,
