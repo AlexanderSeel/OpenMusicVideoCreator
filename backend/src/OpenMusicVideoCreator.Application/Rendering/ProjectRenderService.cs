@@ -6,6 +6,7 @@ using OpenMusicVideoCreator.Application.Generation;
 using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Application.Planning;
 using OpenMusicVideoCreator.Domain.Generation;
+using OpenMusicVideoCreator.Domain.Jobs;
 using OpenMusicVideoCreator.Domain.Projects;
 using OpenMusicVideoCreator.Domain.Rendering;
 
@@ -72,16 +73,27 @@ public sealed class ProjectRenderService
         _timeProvider = timeProvider;
     }
 
-    public Task<IReadOnlyList<ProjectRenderRecord>> ListAsync(
+    public async Task<IReadOnlyList<ProjectRenderRecord>> ListAsync(
         Guid projectId,
-        CancellationToken cancellationToken = default) =>
-        _renders.ListAsync(projectId, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        var renders = await _renders.ListAsync(projectId, cancellationToken);
+        var reconciled = new List<ProjectRenderRecord>(renders.Count);
+        foreach (var render in renders)
+        {
+            reconciled.Add(await ReconcileCancelledJobAsync(render, cancellationToken));
+        }
+        return reconciled;
+    }
 
-    public Task<ProjectRenderRecord?> GetAsync(
+    public async Task<ProjectRenderRecord?> GetAsync(
         Guid projectId,
         Guid renderId,
-        CancellationToken cancellationToken = default) =>
-        _renders.GetAsync(projectId, renderId, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        var render = await _renders.GetAsync(projectId, renderId, cancellationToken);
+        return render is null ? null : await ReconcileCancelledJobAsync(render, cancellationToken);
+    }
 
     public async Task<ProjectRenderRecord> QueueAsync(
         Guid projectId,
@@ -200,6 +212,11 @@ public sealed class ProjectRenderService
         CancellationToken cancellationToken = default)
     {
         var existing = await RequireAsync(projectId, renderId, cancellationToken);
+        if (existing.State == ProjectRenderState.Cancelled)
+        {
+            return existing;
+        }
+
         var attempts = existing.ResolveAttempts().ToList();
         attempts.Add(new ProjectRenderAttempt(
             attempts.Count + 1,
@@ -226,6 +243,12 @@ public sealed class ProjectRenderService
     {
         if (outputMediaAssetId == Guid.Empty) throw new ArgumentException("Output media asset ID is required.", nameof(outputMediaAssetId));
         var existing = await RequireAsync(projectId, renderId, cancellationToken);
+        existing = await ReconcileCancelledJobAsync(existing, cancellationToken);
+        if (existing.State == ProjectRenderState.Cancelled)
+        {
+            throw new OperationCanceledException("Render was cancelled before completion.");
+        }
+
         var attempts = CompleteCurrentAttempt(existing, ProjectRenderState.Completed, commandLog, null);
         return await SaveAsync(existing with
         {
@@ -246,6 +269,12 @@ public sealed class ProjectRenderService
         CancellationToken cancellationToken = default)
     {
         var existing = await RequireAsync(projectId, renderId, cancellationToken);
+        existing = await ReconcileCancelledJobAsync(existing, cancellationToken);
+        if (existing.State == ProjectRenderState.Cancelled)
+        {
+            return existing;
+        }
+
         var attempts = CompleteCurrentAttempt(existing, ProjectRenderState.Failed, commandLog, errorMessage);
         return await SaveAsync(existing with
         {
@@ -265,6 +294,12 @@ public sealed class ProjectRenderService
         CancellationToken cancellationToken = default)
     {
         var existing = await RequireAsync(projectId, renderId, cancellationToken);
+        existing = await ReconcileCancelledJobAsync(existing, cancellationToken);
+        if (existing.State == ProjectRenderState.Cancelled)
+        {
+            return existing;
+        }
+
         var attempts = CompleteCurrentAttempt(existing, ProjectRenderState.Failed, commandLog, errorMessage);
         return await SaveAsync(existing with
         {
@@ -295,7 +330,7 @@ public sealed class ProjectRenderService
         if (!changed)
         {
             var job = await _jobService.GetAsync(jobId, cancellationToken);
-            if (job?.State != Domain.Jobs.JobState.Cancelled)
+            if (job?.State != JobState.Cancelled)
             {
                 throw new InvalidOperationException("Render job cannot be cancelled in its current state.");
             }
@@ -317,6 +352,7 @@ public sealed class ProjectRenderService
         CancellationToken cancellationToken = default)
     {
         var existing = await RequireAsync(projectId, renderId, cancellationToken);
+        existing = await ReconcileCancelledJobAsync(existing, cancellationToken);
         if (existing.State is not (ProjectRenderState.Failed or ProjectRenderState.Cancelled))
         {
             throw new InvalidOperationException("Only failed or cancelled renders can be retried.");
@@ -343,6 +379,32 @@ public sealed class ProjectRenderService
     public static ProjectRenderJobPayload DeserializePayload(string json) =>
         JsonSerializer.Deserialize<ProjectRenderJobPayload>(json, JsonOptions)
         ?? throw new InvalidDataException("Render job payload could not be deserialized.");
+
+    private async Task<ProjectRenderRecord> ReconcileCancelledJobAsync(
+        ProjectRenderRecord render,
+        CancellationToken cancellationToken)
+    {
+        if (render.State is ProjectRenderState.Completed or ProjectRenderState.Cancelled || render.JobId is not Guid jobId)
+        {
+            return render;
+        }
+
+        var job = await _jobService.GetAsync(jobId, cancellationToken);
+        if (job?.State != JobState.Cancelled)
+        {
+            return render;
+        }
+
+        var attempts = CompleteCurrentAttempt(render, ProjectRenderState.Cancelled, render.CommandLog, "Cancelled through the persistent job queue.");
+        return await SaveAsync(render with
+        {
+            State = ProjectRenderState.Cancelled,
+            OutputMediaAssetId = null,
+            ErrorMessage = "Cancelled through the persistent job queue.",
+            Attempts = attempts,
+            UpdatedUtc = GetUtcNow(),
+        }, cancellationToken);
+    }
 
     private IReadOnlyList<ProjectRenderAttempt> CompleteCurrentAttempt(
         ProjectRenderRecord render,
