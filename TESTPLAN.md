@@ -28,13 +28,15 @@ No paid-provider credentials are required for the baseline/mock test plan.
 - [ ] `npm run typecheck`
   - 2026-08-10 earlier failure: `DirectorStoryboardPanel.tsx` and `SceneReferenceEditor.tsx` imported planning/storyboard client exports that were missing from `src/api/client`.
   - 2026-08-10 repository fix: the planning OpenAPI snapshot and typed client exports/operations were added. **Rerun still required; this item is intentionally not marked passed.**
+  - Blocks 9–10 now add dedicated keyframe/clip/job client modules and generation workspaces; typecheck must cover those too.
 - [ ] `npm run test:frontend`
 - [ ] `npm run build:frontend`
 - [x] `dotnet build backend/OpenMusicVideoCreator.sln -c Release`
-  - This successful build predates the final Block 8 completion changes; rerun the baseline build before treating it as proof for Block 8.
+  - This successful build predates the final Block 8/9/10 completion changes; rerun the baseline build before treating it as proof for these blocks.
 - [ ] `dotnet test backend/OpenMusicVideoCreator.sln -c Release`
   - 2026-08-10 earlier run: 38/44 API tests passed. Failures: concurrent DuckDB initialization conflicts on `schema_migrations` (four tests), a planning scene-boundary expectation, and visual-library collection round-trip equality.
   - 2026-08-10 repository fix: the mock Director now uses a music-relative anchor tolerance that reaches the expected 58s structural boundary and tests also cover structured scene details. **Rerun still required; unrelated DuckDB/library failures remain unresolved until proven otherwise.**
+  - Blocks 9–10 add keyframe/video generation tests; none have been executed in the current connector-only environment.
 - [ ] `./scripts/validate.sh` on Linux/macOS or `./scripts/validate.ps1` on Windows/PowerShell.
 - [ ] `./scripts/run.ps1 -NoBrowser` starts the backend and frontend, serves `/healthz` and `http://localhost:3000`, and stops both processes with Ctrl+C.
 - [x] `npm audit` reports no known vulnerabilities.
@@ -147,16 +149,67 @@ No paid-provider credentials are required for the baseline/mock test plan.
 - [ ] Run frontend Director source tests and TypeScript typecheck; confirm the planning API snapshot/client functions used by `DirectorStoryboardPanel` and `SceneReferenceEditor` compile.
 - [ ] Keyboard/responsive pass for Director controls, Visual Arc cards, storyboard cards, scene inspector, reference checkboxes, prompt history, and action buttons.
 
-## Cross-cutting security/data checks after Blocks 1–8
+## Block 9 — Keyframe generation and scene variants
+
+- [ ] Run `KeyframeGenerationFlowTests`, `KeyframeVariantTests`, and keyframe approval tests; confirm all new Block 9 repository tests pass.
+- [ ] Run `frontend/tests/keyframe-workspace-ui.test.mjs`, `npm run typecheck`, lint, and frontend build against the current Block 9 source.
+- [ ] Generate a Start keyframe through `POST /api/projects/{projectId}/scenes/{sceneId}/keyframes/generate`; confirm HTTP returns before generation completes and the persisted job later reaches `Completed`.
+- [ ] Enable optional End generation and confirm Start/End variants preserve their exact `PromptVersionId`, job ID, provider/model, generated media ID, cost fields, and variant history after backend restart.
+- [ ] Confirm generated keyframe preview bytes are stored below the project keyframe area and served by the preview endpoint with range-safe browser behavior.
+- [ ] Build a Character with outfit/base assets plus Style/Location references; confirm the request prioritizes outfit/base Character references, then Style/Location references, and never exceeds `MaxReferences`.
+- [ ] Regenerate one Start keyframe while an older successful variant is selected; confirm the selected variant remains selected until the new completed variant is explicitly selected.
+- [ ] Regenerate Scene N and verify selected assets/variants for all other scenes remain unchanged.
+- [ ] Confirm a selected successful variant cannot be deleted and older unselected successful variants remain recoverable.
+- [ ] Confirm keyframe approval requires a completed selected Start variant, optional selected End variant, and is invalidated/revoked when the current selection changes.
+- [ ] Confirm Simple Mode exposes no provider/model/seed/negative-prompt controls or provider identifiers in variant cards.
+- [ ] Confirm Advanced/Custom exposes only controls supported by the chosen model and rejects unsupported seed/negative-prompt/resolution values in the API.
+- [ ] Simulate rate limit, quota exhaustion, provider outage, transient failure, rejection, and permanent failure; verify job states follow Block 4 retry/wait/terminal semantics without replacing successful variants.
+- [ ] After retry exhaustion or a final terminal provider failure, verify the keyframe variant does not remain permanently shown as `Queued`; if it does, reopen Block 9 state-synchronization implementation.
+- [ ] Restart during queued/generating keyframe work and confirm job/variant/prompt/media provenance recovers from persisted state rather than creating a blind duplicate generation.
+- [ ] Keyboard/responsive pass for scene selection, generation controls, variant cards, compare/select/delete, approval, and Advanced/Custom settings.
+
+Real image-provider validation is intentionally deferred until the complete mock matrix above succeeds.
+
+## Block 10 — Image-to-video/video generation, queue UI, and resumability
+
+- [ ] Run `VideoGenerationFlowTests` and `VideoFallbackTests`; confirm clip settings persistence, mock video materialization, non-destructive selection, and fallback policy tests pass.
+- [ ] Run `frontend/tests/video-generation-ui.test.mjs`, `npm run typecheck`, lint, and frontend build against the current animation/queue source.
+- [ ] Attempt scene animation without current keyframe approval and confirm the API/UI refuses generation without creating a paid/provider job.
+- [ ] Queue animation after approving a Start keyframe and confirm the new `scene.video.generate` job depends on the approved Start job; when End-frame guidance is enabled, confirm the End job is also a dependency.
+- [ ] Confirm the video coordinator resolves only ImageToVideo-capable models with start-frame support and chooses a supported duration/resolution/aspect ratio; unsupported End-frame configuration is rejected.
+- [ ] Generate a mock clip and verify provider execution completes asynchronously, materializes a playable MP4 under project generated media, persists `MediaAssetMetadata`, and exposes it through the range-enabled clip preview endpoint.
+- [ ] Confirm clip variants persist exact prompt/start/end keyframe/job/provider/model/duration/aspect/resolution/cost provenance and survive backend/repository restart.
+- [ ] Select one successful clip, regenerate the same scene, and confirm the prior selected clip remains selected and recoverable until the new successful variant is explicitly selected.
+- [ ] Regenerate one scene and confirm completed/selected clips for other scenes are untouched.
+- [ ] Simulate `QuotaExhausted`/credits exhaustion during a video job; confirm job state reaches `WaitingForQuota`, survives backend restart, and resumes/retries on the same persisted graph later.
+- [ ] Simulate rate limit, provider unavailable, authentication failure, rejection, invalid parameters, network failure, timeout, transient failure, and permanent failure; confirm each maps to the expected waiting/retry/rejected/permanent state without corrupting completed media.
+- [ ] With two compatible fake providers, confirm quota/outage/auth/network/timeout/transient/unsupported-primary failures may use the configured fallback and the actual fallback provider/model is persisted on the completed clip.
+- [ ] Confirm moderation rejection, invalid parameters, and permanent failures do not silently fall back to another provider.
+- [ ] In Custom mode disable fallback, force the primary provider to fail with a normally fallback-eligible failure, and confirm no alternative provider is attempted.
+- [ ] Configure a candidate fallback that cannot preserve End-frame, duration, aspect ratio, or resolution semantics and confirm it is excluded from the fallback list.
+- [ ] Confirm provider task IDs returned by video providers are persisted by the job engine and startup reconciliation does not blindly resubmit known provider-side work.
+- [ ] After retry exhaustion or a final terminal provider failure, verify the clip variant does not remain permanently shown as `Queued`; if it does, reopen Block 10 state-synchronization implementation.
+- [ ] Open the Generation Queue and confirm initial state comes from persisted `GET /api/jobs/`, subsequent job updates arrive through `/api/jobs/events` SSE, and there is no per-scene job polling loop.
+- [ ] Disconnect/reconnect the SSE connection and confirm the browser reconnects, reloads persisted state on `ready`, and does not depend on lost in-memory events.
+- [ ] Verify queue rows show provider/model in Advanced/Custom, state, elapsed time, attempts/retries, estimated/actual cost, next-run time, and error code/message where applicable; Simple Mode hides provider/model detail.
+- [ ] Exercise job pause/resume/retry/restart/cancel plus project pause/resume/cancel actions from the queue and confirm only eligible jobs transition.
+- [ ] Exercise scene-scoped job actions through the existing API and confirm only jobs for that project+scene are affected.
+- [ ] Browser-play the embedded mock MP4 preview and confirm controls/range requests work in the supported desktop browser.
+- [ ] Keyboard/responsive pass for animation settings, clip cards/video controls, queue filters, queue actions, error states, and reconnect status.
+
+Real video-provider validation is intentionally deferred until the complete mock matrix above succeeds.
+
+## Cross-cutting security/data checks after Blocks 1–10
 
 - [ ] Search source/config/exported project data for accidentally committed/resolved credentials.
 - [ ] Upload filenames containing `../`, `..\\`, separators, and invalid characters are rejected.
 - [ ] FFmpeg/ffprobe execution uses argument lists/typed process invocation; test a filename containing spaces/shell metacharacters and verify it is treated only as a path argument.
-- [ ] Project/song/analysis/library/planning operations do not mutate or silently delete original uploaded media bytes.
-- [ ] Restart application between key operations and verify DuckDB/project settings remain the source of truth.
+- [ ] Project/song/analysis/library/planning/generation operations do not mutate or silently delete original uploaded media bytes.
+- [ ] Restart application between key operations and verify DuckDB/project settings/jobs/media metadata remain the source of truth.
+- [ ] Confirm generated keyframe/clip preview routes only open media metadata belonging to the requested project and cannot traverse outside the configured media root.
 
 ---
 
 ## Future block validation
 
-Add concrete executable checks here whenever Blocks 9–14 are implemented. Keep implementation checkboxes in `PLAN.md`; keep unexecuted proof here.
+Add concrete executable checks here whenever Blocks 11–14 are implemented. Keep implementation checkboxes in `PLAN.md`; keep unexecuted proof here.
