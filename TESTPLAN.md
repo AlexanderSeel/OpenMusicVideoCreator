@@ -26,12 +26,15 @@ No paid-provider credentials are required for the baseline/mock test plan.
 - [x] `dotnet restore backend/OpenMusicVideoCreator.sln`
 - [ ] `npm run lint`
 - [ ] `npm run typecheck`
-  - 2026-08-10: fails because `DirectorStoryboardPanel.tsx` and `SceneReferenceEditor.tsx` import planning/storyboard client exports that are not currently present in `src/api/client`.
+  - 2026-08-10 earlier failure: `DirectorStoryboardPanel.tsx` and `SceneReferenceEditor.tsx` imported planning/storyboard client exports that were missing from `src/api/client`.
+  - 2026-08-10 repository fix: the planning OpenAPI snapshot and typed client exports/operations were added. **Rerun still required; this item is intentionally not marked passed.**
 - [ ] `npm run test:frontend`
 - [ ] `npm run build:frontend`
 - [x] `dotnet build backend/OpenMusicVideoCreator.sln -c Release`
+  - This successful build predates the final Block 8 completion changes; rerun the baseline build before treating it as proof for Block 8.
 - [ ] `dotnet test backend/OpenMusicVideoCreator.sln -c Release`
-  - 2026-08-10: 38/44 API tests pass. Failures: concurrent DuckDB initialization conflicts on `schema_migrations` (four tests), a planning scene-boundary expectation, and visual-library collection round-trip equality.
+  - 2026-08-10 earlier run: 38/44 API tests passed. Failures: concurrent DuckDB initialization conflicts on `schema_migrations` (four tests), a planning scene-boundary expectation, and visual-library collection round-trip equality.
+  - 2026-08-10 repository fix: the mock Director now uses a music-relative anchor tolerance that reaches the expected 58s structural boundary and tests also cover structured scene details. **Rerun still required; unrelated DuckDB/library failures remain unresolved until proven otherwise.**
 - [ ] `./scripts/validate.sh` on Linux/macOS or `./scripts/validate.ps1` on Windows/PowerShell.
 - [ ] `./scripts/run.ps1 -NoBrowser` starts the backend and frontend, serves `/healthz` and `http://localhost:3000`, and stops both processes with Ctrl+C.
 - [x] `npm audit` reports no known vulnerabilities.
@@ -128,16 +131,32 @@ No paid-provider credentials are required for the baseline/mock test plan.
 - [ ] Keyboard/focus/accessibility pass for selectors, library editor, asset controls, continuity locks, and range inputs.
 - [ ] Responsive pass for reference selectors, library layout, and asset cards at desktop/tablet/mobile widths.
 
-## Cross-cutting security/data checks after Blocks 1–7
+## Block 8 — AI Director, Visual Arc, storyboard, and prompt history
+
+- [ ] Run `StructuredMockDirector_CreatesMusicAwareTypicalSceneCountWithoutRigidEqualSlices` and confirm a 180s fixture produces roughly 20–35 scenes, non-uniform durations, full contiguous coverage, and a boundary at/near the 58s musical transition.
+- [ ] Confirm every generated scene exposes song section/associated lyric, purpose, emotion, composition, camera, lighting, environment motion, symbolism, continuity requirements, and Character/Style/Location references where selected.
+- [ ] Create a Director plan in the UI, edit Visual Arc summary/points/controls, save, reload, and confirm a new persistent Visual Arc version exists.
+- [ ] Edit only one storyboard scene, including Character/Style/Location checkboxes and structured creative fields; confirm other scene content remains unchanged and a new storyboard version is created.
+- [ ] Reorder two scenes and confirm their musical timing slots remain contiguous/non-overlapping while scene content moves to the new sequence positions.
+- [ ] Confirm Director Intent remains separately visible from Final Provider Prompt and that prompt template/version metadata is shown in history.
+- [ ] Regenerate a scene prompt with refinement notes and confirm no generation job/image/video call is created.
+- [ ] Confirm the regenerated prompt uses the storyboard's referenced Visual Arc controls and exact `SongAnalysisId`, even if a newer song analysis is created after the storyboard.
+- [ ] Confirm editing/saving a Visual Arc version preserves its original `SongAnalysisId` instead of silently rebasing to the newest analysis.
+- [ ] Restart/recreate repositories and confirm Visual Arc, storyboard structured details, prompt versions, selected prompt ID, and prompt-to-storyboard provenance survive.
+- [ ] Confirm downstream keyframe variants retain immutable `PromptVersionId` provenance so later generation can be attributed to the exact prompt revision.
+- [ ] Run frontend Director source tests and TypeScript typecheck; confirm the planning API snapshot/client functions used by `DirectorStoryboardPanel` and `SceneReferenceEditor` compile.
+- [ ] Keyboard/responsive pass for Director controls, Visual Arc cards, storyboard cards, scene inspector, reference checkboxes, prompt history, and action buttons.
+
+## Cross-cutting security/data checks after Blocks 1–8
 
 - [ ] Search source/config/exported project data for accidentally committed/resolved credentials.
 - [ ] Upload filenames containing `../`, `..\\`, separators, and invalid characters are rejected.
 - [ ] FFmpeg/ffprobe execution uses argument lists/typed process invocation; test a filename containing spaces/shell metacharacters and verify it is treated only as a path argument.
-- [ ] Project/song/analysis/library operations do not mutate or silently delete original uploaded media bytes.
-- [ ] Restart application between key operations and verify DuckDB remains the source of truth.
+- [ ] Project/song/analysis/library/planning operations do not mutate or silently delete original uploaded media bytes.
+- [ ] Restart application between key operations and verify DuckDB/project settings remain the source of truth.
 
 ---
 
 ## Future block validation
 
-Add concrete executable checks here whenever Blocks 8–14 are implemented. Keep implementation checkboxes in `PLAN.md`; keep unexecuted proof here.
+Add concrete executable checks here whenever Blocks 9–14 are implemented. Keep implementation checkboxes in `PLAN.md`; keep unexecuted proof here.
