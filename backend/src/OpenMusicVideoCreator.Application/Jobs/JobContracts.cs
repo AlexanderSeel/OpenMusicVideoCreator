@@ -53,6 +53,17 @@ public interface IJobQueue
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Ephemeral execution signal for local work that is already running. Persisted job state remains authoritative;
+/// this registry only propagates a user cancellation into the currently executing local operation.
+/// </summary>
+public interface IJobExecutionCancellationRegistry
+{
+    CancellationToken Register(Guid jobId, CancellationToken hostCancellationToken = default);
+    void Cancel(Guid jobId);
+    void Unregister(Guid jobId);
+}
+
 public interface IJobChangePublisher
 {
     ValueTask PublishAsync(Guid jobId, CancellationToken cancellationToken = default);
