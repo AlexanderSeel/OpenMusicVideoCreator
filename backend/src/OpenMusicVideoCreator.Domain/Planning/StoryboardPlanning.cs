@@ -135,6 +135,9 @@ public sealed record StoryboardScene(
 {
     public double DurationSeconds => EndSeconds - StartSeconds;
     public StoryboardSceneDetails ResolveDetails() => Details ?? StoryboardSceneDetails.Empty;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public StoryboardSceneDetails EffectiveDetails => ResolveDetails();
 }
 
 public sealed record StoryboardVersion(
