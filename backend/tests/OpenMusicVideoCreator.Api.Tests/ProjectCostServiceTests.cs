@@ -75,8 +75,9 @@ public sealed class ProjectCostServiceTests
         var repository = new InMemoryJobRepository();
         var changes = new NoopJobChangePublisher();
         var jobService = new JobService(repository, changes, TimeProvider.System);
-        var costs = new ProjectCostService(new ProjectRepository(project), repository);
-        var queue = new BudgetAwareJobQueue(jobService, new ProjectRepository(project), costs);
+        var projectRepository = new ProjectRepository(project);
+        var costs = new ProjectCostService(projectRepository, repository);
+        var queue = new BudgetAwareJobQueue(jobService, projectRepository, costs);
         var definition = new JobDefinition(
             projectId,
             Guid.NewGuid(),
@@ -164,7 +165,7 @@ public sealed class ProjectCostServiceTests
             FixedUtc(),
             null,
             FixedUtc(),
-            state.IsTerminal() ? FixedUtc() : null,
+            IsTerminal(state) ? FixedUtc() : null,
             null,
             null,
             null,
@@ -173,6 +174,9 @@ public sealed class ProjectCostServiceTests
             "USD",
             null,
             null);
+
+    private static bool IsTerminal(JobState state) =>
+        state is JobState.Completed or JobState.Rejected or JobState.FailedPermanent or JobState.Cancelled;
 
     private static DateTimeOffset FixedUtc() => new(2026, 8, 11, 10, 0, 0, TimeSpan.Zero);
 
