@@ -153,7 +153,8 @@ builder.Services.AddSingleton<IJobChangePublisher>(services => services.GetRequi
 builder.Services.AddSingleton<IJobChangeStream>(services => services.GetRequiredService<JobChangeHub>());
 builder.Services.AddSingleton<IJobExecutionCancellationRegistry, InMemoryJobExecutionCancellationRegistry>();
 builder.Services.AddSingleton<JobService>();
-builder.Services.AddSingleton<IJobQueue>(services => services.GetRequiredService<JobService>());
+builder.Services.AddSingleton<BudgetAwareJobQueue>();
+builder.Services.AddSingleton<IJobQueue>(services => services.GetRequiredService<BudgetAwareJobQueue>());
 builder.Services.AddSingleton<MockJobExecutionDispatcher>();
 builder.Services.AddSingleton<GenerationJobExecutionDispatcher>();
 builder.Services.AddSingleton<VideoGenerationJobExecutionDispatcher>();
