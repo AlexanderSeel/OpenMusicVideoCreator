@@ -12,7 +12,7 @@ The product specification is `AI_Music_Video_Studio_Master_Prompt.md`.
 
 ## Current implementation
 
-Repository-side implementation covers Blocks 1–11 and most of the **versioned Advanced timeline foundation in Block 12**, plus the offline/mock generation paths of Blocks 9 and 10. Real image/video provider integrations remain deliberately open until the complete mock validation matrix in `TESTPLAN.md` has actually passed.
+Repository-side implementation now covers Blocks 1–12, plus the offline/mock generation paths of Blocks 9 and 10. Real image/video provider integrations remain deliberately open until the complete mock validation matrix in `TESTPLAN.md` has actually passed.
 
 Implemented capabilities include:
 
@@ -40,8 +40,9 @@ Implemented capabilities include:
 - deterministic Preview/Final MP4 render jobs using the protected original Song as output audio
 - render manifests with storyboard/selected-clip/timeline provenance and SHA-256 decision hashes
 - ffprobe validation before render success, versioned render/attempt history, cancel/retry, partial-output cleanup, and downloads
-- versioned Advanced timeline with protected Song, trim/move/split/replace, playback-rate/freeze, transforms/crop/color/opacity, transition intent, overlays/effects, and reversible version restore
+- versioned Advanced timeline with protected Song, trim/move/split/replace, playback-rate/freeze, transforms/crop/color/opacity, Cut/Fade/true Crossfade, overlays/effects/subtitles, and reversible version restore
 - Advanced music-reference lanes reusing persisted waveform/sections/phrases/beats/bars/quiet ranges/lyric timing
+- editable Overlay, Effect, and Subtitle composition lanes; subtitles are burned into deterministic renders
 - Scene Inspector sections for Story, Character, Environment, Camera, Generation, and Prompt
 - Prompt-only regeneration without automatically starting paid generation
 
@@ -52,7 +53,7 @@ See:
 - `docs/BLOCK11_RENDERING.md`
 - `docs/BLOCK12_ADVANCED_TIMELINE.md`
 
-Still open in the current PLAN include real image/video providers, true neighboring FFmpeg crossfade composition, subtitle authoring/rendering, remaining Advanced timeline polish, QA/model routing/budgets/state curves, and release hardening.
+Still open in the current PLAN are real image/video providers, QA/vision evaluation, smart model routing, budget/cost controls, continuity/state curves, multi-output reuse strategy, and release hardening.
 
 ## Prerequisites
 
@@ -62,7 +63,7 @@ Still open in the current PLAN include real image/video providers, true neighbor
 - Git
 - **FFmpeg + ffprobe** on `PATH`
 
-FFmpeg/ffprobe are runtime requirements for song analysis, visual-reference previews, deterministic project rendering, and render validation.
+FFmpeg/ffprobe are runtime requirements for song analysis, visual-reference previews, deterministic project rendering, and render validation. Burned-in subtitles require an FFmpeg build with the `drawtext` filter available.
 
 ## Install
 
@@ -185,15 +186,19 @@ Every version pins:
 - protected music flag
 - ordered scene/variant/media provenance
 - trim/playback/freeze settings
-- transition intent/duration
+- transition kind/duration
 - transform/crop/opacity/color settings
-- overlay and effect lanes
+- overlay, effect, and subtitle lanes
 
-Edits create new versions. Restoring an older version creates another new version; generated media and original Song bytes are never rewritten.
+Edits create new versions. Restoring an older compatible version creates another new version; generated media and original Song bytes are never rewritten. If the current storyboard changes, timeline edits rebase to a current compatible timeline and stale clip IDs are rejected rather than silently modifying old state.
 
 The Scene Inspector contains Story, Character, Environment, Camera, Generation, and Prompt sections. Prompt refinement uses the existing prompt-versioning operation and does not auto-start generation.
 
-`Crossfade` is persisted as explicit transition intent, but current deterministic rendering treats it with fade behavior rather than claiming true neighboring `xfade` composition. That remains an open PLAN item.
+Composition controls can add/update/delete:
+
+- project-owned image/video overlays with timing, position, scale, and opacity
+- bounded Fade-to-black, Grayscale, and Vignette effects
+- timed subtitles with text, vertical position, size, and opacity
 
 ## Deterministic rendering
 
@@ -201,7 +206,7 @@ Preview and Final export run as persistent `project.render` jobs.
 
 `ProjectRenderService` prefers the latest Advanced timeline only when its exact Storyboard and Song IDs still match the current project state. Otherwise it falls back to the current storyboard/selected clips instead of silently applying stale edits.
 
-The immutable render manifest pins source clip/media IDs, edit parameters, overlays/effects, original Song, optional timeline version, output profile, and a deterministic timeline SHA-256 hash.
+The immutable render manifest pins source clip/media IDs, edit parameters, overlays/effects/subtitles, original Song, optional timeline version, output profile, and a deterministic timeline SHA-256 hash.
 
 `FfmpegProjectRenderEngine` uses `ProcessStartInfo.ArgumentList` and safe media-path resolution. Current render filters consume:
 
@@ -211,9 +216,13 @@ The immutable render manifest pins source clip/media IDs, edit parameters, overl
 - crop/scale/position
 - brightness/contrast/saturation
 - opacity
-- fade transition behavior
+- Fade
+- true neighboring Crossfade using `xfade`
 - overlays
 - Fade-to-black / Grayscale / Vignette effects
+- burned-in timed subtitles using escaped `drawtext`
+
+For Crossfade, the outgoing clip is extended by exactly the transition duration and the `xfade` starts at the incoming clip's nominal timeline boundary, preserving total song/timeline duration.
 
 Generated clip/overlay audio is never mapped. The project's protected original Song is the only output audio source.
 
@@ -258,6 +267,8 @@ PUT    /api/projects/{projectId}/timeline/overlays
 DELETE /api/projects/{projectId}/timeline/overlays/{overlayId}
 PUT    /api/projects/{projectId}/timeline/effects
 DELETE /api/projects/{projectId}/timeline/effects/{effectId}
+PUT    /api/projects/{projectId}/timeline/subtitles
+DELETE /api/projects/{projectId}/timeline/subtitles/{subtitleId}
 POST   /api/projects/{projectId}/timeline/restore/{versionId}
 ```
 
