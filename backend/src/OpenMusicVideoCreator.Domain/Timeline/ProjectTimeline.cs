@@ -145,6 +145,29 @@ public sealed record TimelineEffect(
     }
 }
 
+public sealed record TimelineSubtitle(
+    Guid Id,
+    string Text,
+    double StartSeconds,
+    double EndSeconds,
+    double PositionY,
+    double Size,
+    double Opacity)
+{
+    public void Validate(double timelineDurationSeconds)
+    {
+        if (Id == Guid.Empty || string.IsNullOrWhiteSpace(Text) || Text.Length > 500 || Text.Contains('\0') ||
+            !double.IsFinite(StartSeconds) || !double.IsFinite(EndSeconds) ||
+            StartSeconds < 0 || EndSeconds <= StartSeconds || EndSeconds > timelineDurationSeconds + 0.001 ||
+            !double.IsFinite(PositionY) || PositionY is < -1 or > 1 ||
+            !double.IsFinite(Size) || Size is < 0.5 or > 2 ||
+            !double.IsFinite(Opacity) || Opacity is < 0 or > 1)
+        {
+            throw new ArgumentException("Timeline subtitle values are invalid.");
+        }
+    }
+}
+
 public sealed record ProjectTimelineVersion(
     Guid Id,
     Guid ProjectId,
@@ -156,9 +179,11 @@ public sealed record ProjectTimelineVersion(
     IReadOnlyList<TimelineClip> Clips,
     IReadOnlyList<TimelineOverlay> Overlays,
     IReadOnlyList<TimelineEffect> Effects,
-    DateTimeOffset CreatedUtc)
+    DateTimeOffset CreatedUtc,
+    IReadOnlyList<TimelineSubtitle>? Subtitles = null)
 {
     public double DurationSeconds => Clips.Count == 0 ? 0 : Clips.Max(clip => clip.TimelineEndSeconds);
+    public IReadOnlyList<TimelineSubtitle> ResolveSubtitles() => Subtitles ?? [];
 
     public void Validate()
     {
@@ -199,5 +224,6 @@ public sealed record ProjectTimelineVersion(
 
         foreach (var overlay in Overlays) overlay.Validate(DurationSeconds);
         foreach (var effect in Effects) effect.Validate(DurationSeconds);
+        foreach (var subtitle in ResolveSubtitles()) subtitle.Validate(DurationSeconds);
     }
 }
