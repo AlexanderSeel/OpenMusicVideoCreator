@@ -19,6 +19,17 @@ public sealed record SceneCostBreakdown(
     decimal ReservedEstimatedCost,
     int JobCount);
 
+public sealed record GenerationCostBreakdown(
+    Guid JobId,
+    Guid? SceneId,
+    string Type,
+    string? ProviderId,
+    string? ModelId,
+    JobState State,
+    decimal ActualCost,
+    decimal ReservedEstimatedCost,
+    DateTimeOffset CreatedUtc);
+
 public sealed record ProjectCostSummary(
     Guid ProjectId,
     string Currency,
@@ -29,6 +40,7 @@ public sealed record ProjectCostSummary(
     decimal ProjectedCost,
     decimal? RemainingBudget,
     int UnknownCostJobCount,
+    IReadOnlyList<GenerationCostBreakdown> Generations,
     IReadOnlyList<CostBreakdown> Providers,
     IReadOnlyList<SceneCostBreakdown> Scenes);
 
@@ -122,6 +134,21 @@ public sealed class ProjectCostService
             ? Math.Max(0, maximum - projected)
             : (decimal?)null;
 
+        var generations = billable
+            .OrderByDescending(job => job.CreatedUtc)
+            .ThenBy(job => job.Id)
+            .Select(job => new GenerationCostBreakdown(
+                job.Id,
+                job.SceneId,
+                job.Type,
+                job.ProviderId,
+                job.ModelId,
+                job.State,
+                Normalize(job.ActualCost),
+                job.ActualCost is null ? Normalize(job.EstimatedCost) : 0m,
+                job.CreatedUtc))
+            .ToArray();
+
         var providers = billable
             .GroupBy(job => (job.ProviderId, job.ModelId))
             .Select(group => new CostBreakdown(
@@ -156,6 +183,7 @@ public sealed class ProjectCostService
             projected,
             remaining,
             unknown,
+            generations,
             providers,
             scenes);
     }
