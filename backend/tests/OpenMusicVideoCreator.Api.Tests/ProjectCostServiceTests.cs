@@ -10,7 +10,7 @@ namespace OpenMusicVideoCreator.Api.Tests;
 public sealed class ProjectCostServiceTests
 {
     [Fact]
-    public async Task Summary_AggregatesActualReservedProviderModelAndSceneCosts()
+    public async Task Summary_AggregatesActualReservedGenerationProviderModelAndSceneCosts()
     {
         var projectId = Guid.NewGuid();
         var sceneA = Guid.NewGuid();
@@ -19,7 +19,7 @@ public sealed class ProjectCostServiceTests
         var jobs = new InMemoryJobRepository(
             Job(projectId, sceneA, "image", "provider-a", "model-1", JobState.Completed, 3m, 2.5m),
             Job(projectId, sceneA, "video", "provider-a", "model-2", JobState.Queued, 1.25m, null),
-            Job(projectId, sceneB, "video", "provider-b", "model-9", JobState.FailedPermanent, 9m, null),
+            Job(projectId, sceneB, "video", "provider-b", "model-9", JobState.FailedPermanent, 9m, 0m),
             Job(projectId, sceneB, "image", "provider-b", "model-9", JobState.Cancelled, 4m, 0.5m));
         var service = new ProjectCostService(new ProjectRepository(project), jobs);
 
@@ -30,6 +30,7 @@ public sealed class ProjectCostServiceTests
         Assert.Equal(4.25m, summary.ProjectedCost);
         Assert.Equal(5.75m, summary.RemainingBudget);
         Assert.Equal(0, summary.UnknownCostJobCount);
+        Assert.Equal(4, summary.Generations.Count);
         Assert.Equal(3, summary.Providers.Count);
         var providerA1 = Assert.Single(summary.Providers, item => item.ProviderId == "provider-a" && item.ModelId == "model-1");
         Assert.Equal(2.5m, providerA1.ActualCost);
@@ -37,6 +38,44 @@ public sealed class ProjectCostServiceTests
         var scene = Assert.Single(summary.Scenes, item => item.SceneId == sceneA);
         Assert.Equal(2.5m, scene.ActualCost);
         Assert.Equal(1.25m, scene.ReservedEstimatedCost);
+        var queuedGeneration = Assert.Single(summary.Generations, item => item.State == JobState.Queued);
+        Assert.Equal(1.25m, queuedGeneration.ReservedEstimatedCost);
+    }
+
+    [Fact]
+    public async Task TerminalEstimate_RemainsReservedUntilActualCostIsExplicitlyResolved()
+    {
+        var projectId = Guid.NewGuid();
+        var project = Project(projectId, maximumBudget: 10m);
+        var unresolved = Job(
+            projectId,
+            Guid.NewGuid(),
+            "video",
+            "provider",
+            "model",
+            JobState.FailedPermanent,
+            3m,
+            null);
+        var resolvedZero = Job(
+            projectId,
+            Guid.NewGuid(),
+            "image",
+            "provider",
+            "model",
+            JobState.Cancelled,
+            5m,
+            0m);
+        var service = new ProjectCostService(
+            new ProjectRepository(project),
+            new InMemoryJobRepository(unresolved, resolvedZero));
+
+        var summary = await service.GetAsync(projectId);
+
+        Assert.Equal(3m, summary.ReservedEstimatedCost);
+        Assert.Equal(0m, summary.ActualCost);
+        Assert.Equal(3m, summary.ProjectedCost);
+        Assert.Equal(0m, Assert.Single(summary.Generations, item => item.JobId == resolvedZero.Id).ReservedEstimatedCost);
+        Assert.Equal(3m, Assert.Single(summary.Generations, item => item.JobId == unresolved.Id).ReservedEstimatedCost);
     }
 
     [Fact]
