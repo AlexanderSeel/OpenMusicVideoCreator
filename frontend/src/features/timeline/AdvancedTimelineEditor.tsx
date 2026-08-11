@@ -24,6 +24,7 @@ import {
   type TimelineClipEdit,
   type TimelineTransitionKind,
 } from "@/src/api/timeline";
+import { TimelineCompositionControls } from "./TimelineCompositionControls";
 
 interface AdvancedTimelineEditorProps {
   projectId?: string;
@@ -228,6 +229,8 @@ export function AdvancedTimelineEditor({ projectId }: AdvancedTimelineEditorProp
     setMessage(notice);
   }
 
+  const subtitles = timeline.subtitles ?? [];
+
   return (
     <section className="advanced-timeline" aria-labelledby="advanced-timeline-heading">
       <TimelineHeading />
@@ -248,7 +251,10 @@ export function AdvancedTimelineEditor({ projectId }: AdvancedTimelineEditorProp
         <div className="timeline-lane transition-lane"><span className="lane-label">Transitions</span><div className="lane-content timeline-flex">{timeline.clips.map((clip) => <div key={clip.id} className="transition-chip" style={{ flexGrow: clip.timelineDurationSeconds }}><span>{clip.transitionIn}{clip.transitionDurationSeconds > 0 ? ` ${clip.transitionDurationSeconds.toFixed(2)}s` : ""}</span></div>)}</div></div>
         <div className="timeline-lane"><span className="lane-label">Overlays</span><div className="lane-content lane-absolute">{timeline.overlays.length === 0 ? <span className="lane-empty">No overlays</span> : timeline.overlays.map((overlay) => <span key={overlay.id} className="overlay-segment" style={segmentStyle(overlay.startSeconds, overlay.endSeconds, duration)}>Overlay · {Math.round(overlay.opacity * 100)}%</span>)}</div></div>
         <div className="timeline-lane"><span className="lane-label">Effects</span><div className="lane-content lane-absolute">{timeline.effects.length === 0 ? <span className="lane-empty">No effects</span> : timeline.effects.map((effect) => <span key={effect.id} className="effect-segment" style={segmentStyle(effect.startSeconds, effect.endSeconds, duration)}>{effect.kind} · {Math.round(effect.strength * 100)}%</span>)}</div></div>
+        <div className="timeline-lane"><span className="lane-label">Subtitles</span><div className="lane-content lane-absolute">{subtitles.length === 0 ? <span className="lane-empty">No subtitles</span> : subtitles.map((subtitle) => <span key={subtitle.id} className="subtitle-segment" style={segmentStyle(subtitle.startSeconds, subtitle.endSeconds, duration)}>{subtitle.text}</span>)}</div></div>
       </div>
+
+      <TimelineCompositionControls projectId={projectId} timeline={timeline} disabled={busy} onChanged={acceptTimeline} onError={(error) => setMessage(error)} />
 
       {selectedClip && clipDraft ? (
         <div className="advanced-inspector-layout">
