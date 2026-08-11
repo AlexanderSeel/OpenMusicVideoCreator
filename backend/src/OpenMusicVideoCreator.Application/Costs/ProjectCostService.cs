@@ -123,7 +123,11 @@ public sealed class ProjectCostService
 
     internal static ProjectCostSummary Build(MusicVideoProject project, IReadOnlyList<GenerationJob> jobs)
     {
-        var billable = jobs.Where(IsPotentiallyBillable).ToArray();
+        // Only jobs that have provider/cost provenance participate in accounting. Local/admin jobs with
+        // no provider and no estimate/actual cost do not create false "unknown spend" warnings.
+        // An estimated provider cost remains reserved until ActualCost is explicitly resolved, including
+        // explicit zero after a terminal provider outcome.
+        var billable = jobs.Where(IsCostTracked).ToArray();
         var actual = billable.Sum(job => Normalize(job.ActualCost));
         var reserved = billable
             .Where(job => job.ActualCost is null)
@@ -217,7 +221,7 @@ public sealed class ProjectCostService
         if (summary.UnknownCostJobCount > 0)
         {
             throw new InvalidOperationException(
-                "Project contains active/completed generation with unknown cost; hard budget compliance cannot be guaranteed until those costs are resolved.");
+                "Project contains provider generation with unknown cost; hard budget compliance cannot be guaranteed until those costs are resolved.");
         }
 
         var projected = summary.ProjectedCost + estimatedCost.Value;
@@ -235,8 +239,8 @@ public sealed class ProjectCostService
             .Where(job => job.ProjectId == projectId)
             .ToArray();
 
-    private static bool IsPotentiallyBillable(GenerationJob job) =>
-        job.State is not (JobState.Cancelled or JobState.Rejected or JobState.FailedPermanent) || job.ActualCost is not null;
+    private static bool IsCostTracked(GenerationJob job) =>
+        job.ProviderId is not null || job.EstimatedCost is not null || job.ActualCost is not null;
 
     private static decimal Normalize(decimal? value) => value is > 0 ? value.Value : 0m;
 }
