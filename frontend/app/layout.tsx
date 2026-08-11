@@ -5,6 +5,7 @@ import "./library.css";
 import "./director.css";
 import "./keyframes.css";
 import "./generation.css";
+import "./costs.css";
 import "./rendering.css";
 import "./timeline.css";
 
