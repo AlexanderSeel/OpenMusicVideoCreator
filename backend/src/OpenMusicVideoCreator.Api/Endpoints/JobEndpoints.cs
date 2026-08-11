@@ -70,18 +70,26 @@ public static class JobEndpoints
 
         group.MapPost("/", async (
             JobCreateRequest request,
-            JobService service,
+            IJobQueue queue,
             CancellationToken cancellationToken) =>
         {
             try
             {
-                var job = await service.EnqueueAsync(
+                var job = await queue.EnqueueAsync(
                     request.ToDefinition(),
                     request.Dependencies ?? [],
                     cancellationToken);
                 return (IResult)Results.Created(
                     $"/api/jobs/{job.Id}",
                     JobResponse.FromDomain(job));
+            }
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.Conflict(new { error = exception.Message });
             }
             catch (ArgumentException exception)
             {
@@ -93,6 +101,8 @@ public static class JobEndpoints
         })
             .WithName("CreateJob")
             .Produces<JobResponse>(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict)
             .ProducesValidationProblem();
 
         MapJobAction(group, "pause", (service, id, token) => service.PauseAsync(id, token));
