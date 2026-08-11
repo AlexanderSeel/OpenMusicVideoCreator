@@ -55,6 +55,16 @@ export interface TimelineEffect {
   strength: number;
 }
 
+export interface TimelineSubtitle {
+  id: string;
+  text: string;
+  startSeconds: number;
+  endSeconds: number;
+  positionY: number;
+  size: number;
+  opacity: number;
+}
+
 export interface ProjectTimelineVersion {
   id: string;
   projectId: string;
@@ -66,6 +76,7 @@ export interface ProjectTimelineVersion {
   clips: TimelineClip[];
   overlays: TimelineOverlay[];
   effects: TimelineEffect[];
+  subtitles?: TimelineSubtitle[] | null;
   createdUtc: string;
 }
 
@@ -97,6 +108,16 @@ export interface TimelineEffectEdit {
   startSeconds: number;
   endSeconds: number;
   strength: number;
+}
+
+export interface TimelineSubtitleEdit {
+  id?: string | null;
+  text: string;
+  startSeconds: number;
+  endSeconds: number;
+  positionY: number;
+  size: number;
+  opacity: number;
 }
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5100";
@@ -198,6 +219,21 @@ export async function deleteTimelineEffect(projectId: string, effectId: string):
     method: "DELETE",
     headers: { Accept: "application/json" },
   }), "Delete timeline effect");
+}
+
+export async function upsertTimelineSubtitle(projectId: string, edit: TimelineSubtitleEdit): Promise<ProjectTimelineVersion> {
+  return readJson<ProjectTimelineVersion>(await fetch(`${base(projectId)}/subtitles`, {
+    method: "PUT",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(edit),
+  }), "Save timeline subtitle");
+}
+
+export async function deleteTimelineSubtitle(projectId: string, subtitleId: string): Promise<ProjectTimelineVersion> {
+  return readJson<ProjectTimelineVersion>(await fetch(`${base(projectId)}/subtitles/${subtitleId}`, {
+    method: "DELETE",
+    headers: { Accept: "application/json" },
+  }), "Delete timeline subtitle");
 }
 
 export async function restoreTimelineVersion(projectId: string, versionId: string): Promise<ProjectTimelineVersion> {
