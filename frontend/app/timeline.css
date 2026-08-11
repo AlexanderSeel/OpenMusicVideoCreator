@@ -34,8 +34,9 @@
 .transition-chip { min-width: 3rem; display: grid; place-items: center; border-left: 1px dashed var(--line-strong); color: var(--text-muted); font-size: .68rem; }
 .lane-absolute { min-height: 2.2rem; }
 .lane-empty { color: var(--text-muted); font-size: .72rem; position: absolute; top: .8rem; left: .6rem; }
-.overlay-segment, .effect-segment { position: absolute; top: .45rem; height: 1.55rem; border-radius: .35rem; padding: .25rem .4rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .68rem; border: 1px solid var(--line-strong); background: var(--panel-soft); }
-.effect-segment { top: .45rem; }
+.overlay-segment, .effect-segment, .subtitle-segment { position: absolute; top: .45rem; height: 1.55rem; border-radius: .35rem; padding: .25rem .4rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .68rem; border: 1px solid var(--line-strong); background: var(--panel-soft); }
+.effect-segment { background: color-mix(in srgb, #c4a7ff 12%, var(--panel-soft)); }
+.subtitle-segment { background: color-mix(in srgb, #ffd37a 12%, var(--panel-soft)); }
 
 .analysis-timeline-panel { background: color-mix(in srgb, var(--panel) 94%, var(--accent) 6%); }
 .timeline-analysis-canvas { height: 5rem; padding: 0; }
@@ -53,6 +54,20 @@
 .section-verse { background: color-mix(in srgb, var(--success) 14%, var(--panel-soft)); }
 .section-bridge, .section-breakdown { background: color-mix(in srgb, #c4a7ff 16%, var(--panel-soft)); }
 
+.timeline-composition { margin-top: 1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-soft); padding: .85rem; }
+.timeline-composition .structure-heading { margin-bottom: .75rem; }
+.timeline-composition-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; align-items: start; }
+.composition-card { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); padding: .75rem; display: grid; gap: .6rem; min-width: 0; }
+.composition-card > header { display: flex; justify-content: space-between; align-items: start; gap: .5rem; border-bottom: 1px solid var(--line); padding-bottom: .55rem; }
+.composition-card > header > div { display: grid; gap: .15rem; min-width: 0; }
+.composition-card > header span { color: var(--text-muted); font-size: .75rem; line-height: 1.35; }
+.composition-list { list-style: none; margin: 0; padding: .2rem 0 0; display: grid; gap: .4rem; }
+.composition-list li { display: flex; justify-content: space-between; align-items: center; gap: .5rem; border-top: 1px solid var(--line); padding-top: .45rem; min-width: 0; }
+.composition-list li > span { color: var(--text-soft); font-size: .76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composition-list li > div { display: flex; gap: .35rem; flex: 0 0 auto; }
+.composition-list .button { padding: .35rem .5rem; }
+.composition-empty { margin: 0; color: var(--text-muted); font-size: .76rem; }
+
 .advanced-inspector-layout { display: grid; grid-template-columns: minmax(20rem, .85fr) minmax(28rem, 1.15fr); gap: .9rem; margin-top: 1rem; align-items: start; }
 .timeline-preview-card, .advanced-scene-inspector { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-soft); padding: .8rem; }
 .timeline-preview-card { position: sticky; top: .75rem; }
@@ -69,6 +84,10 @@
 .inspector-section details { border-top: 1px solid var(--line); padding-top: .45rem; }
 .inspector-section summary { cursor: pointer; color: var(--text-soft); }
 .inspector-section pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); padding: .55rem; border-radius: var(--radius-sm); font-size: .72rem; }
+
+@media (max-width: 1100px) {
+  .timeline-composition-grid { grid-template-columns: 1fr; }
+}
 
 @media (max-width: 980px) {
   .timeline-toolbar, .advanced-inspector-layout { grid-template-columns: 1fr; }
