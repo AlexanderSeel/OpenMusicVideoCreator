@@ -43,12 +43,33 @@ test("Advanced Scene Inspector exposes reversible editing groups", () => {
     "Regenerate prompt only",
     "No image/video generation job was started",
     "Save as new timeline version",
+    "Subtitles",
+    "TimelineCompositionControls",
   ]) {
     assert.match(editor, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 });
 
-test("timeline client covers versioned edits restore overlays and effects", () => {
+test("composition controls edit overlays effects and burned-in subtitles", () => {
+  const controls = read("src/features/timeline/TimelineCompositionControls.tsx");
+  for (const token of [
+    "Composition lanes",
+    "Add overlay",
+    "Update overlay",
+    "Add effect",
+    "Update effect",
+    "Add subtitle",
+    "Update subtitle",
+    "deleteTimelineOverlay",
+    "deleteTimelineEffect",
+    "deleteTimelineSubtitle",
+    "Burned into Preview/Final output",
+  ]) {
+    assert.match(controls, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
+test("timeline client covers versioned clip composition subtitle and restore operations", () => {
   const client = read("src/api/timeline.ts");
   for (const token of [
     "initializeTimeline",
@@ -61,6 +82,8 @@ test("timeline client covers versioned edits restore overlays and effects", () =
     "deleteTimelineOverlay",
     "upsertTimelineEffect",
     "deleteTimelineEffect",
+    "upsertTimelineSubtitle",
+    "deleteTimelineSubtitle",
     "restoreTimelineVersion",
   ]) {
     assert.match(client, new RegExp(token));
@@ -72,6 +95,7 @@ test("render client pins Advanced timeline provenance", () => {
   assert.match(renders, /timelineVersionId/);
   assert.match(renders, /overlays/);
   assert.match(renders, /effects/);
+  assert.match(renders, /subtitles/);
   assert.match(renders, /sourceInSeconds/);
   assert.match(renders, /playbackRate/);
 });
