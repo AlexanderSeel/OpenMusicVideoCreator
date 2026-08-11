@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using OpenMusicVideoCreator.Application.Abstractions;
 using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Domain.Jobs;
@@ -37,6 +38,7 @@ public sealed class ProjectCostService
 
     private readonly IProjectRepository _projects;
     private readonly IJobRepository _jobs;
+    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _projectGates = new();
 
     public ProjectCostService(IProjectRepository projects, IJobRepository jobs)
     {
@@ -50,10 +52,7 @@ public sealed class ProjectCostService
     {
         var project = await _projects.GetAsync(projectId, cancellationToken)
             ?? throw new KeyNotFoundException($"Project '{projectId}' was not found.");
-        var jobs = (await _jobs.ListAsync(cancellationToken))
-            .Where(job => job.ProjectId == projectId)
-            .ToArray();
-        return Build(project, jobs);
+        return Build(project, await ListProjectJobsAsync(project.Id, cancellationToken));
     }
 
     public async Task EnsureCanReserveAsync(
@@ -67,36 +66,46 @@ public sealed class ProjectCostService
         {
             return;
         }
-        if (estimatedCost is null)
+
+        var gate = _projectGates.GetOrAdd(project.Id, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
         {
-            throw new InvalidOperationException(
-                "This generation has no cost estimate, so it cannot be queued while a hard project budget cap is configured.");
+            await EnsureCanReserveInsideGateAsync(project, estimatedCost, currency, cancellationToken);
         }
-        if (estimatedCost < 0)
+        finally
         {
-            throw new ArgumentOutOfRangeException(nameof(estimatedCost), "Estimated generation cost cannot be negative.");
+            gate.Release();
         }
-        if (!string.Equals(currency ?? BudgetCurrency, BudgetCurrency, StringComparison.OrdinalIgnoreCase))
+    }
+
+    public async Task<T> ExecuteWithinBudgetAsync<T>(
+        MusicVideoProject project,
+        decimal? estimatedCost,
+        string? currency,
+        Func<CancellationToken, Task<T>> enqueueOperation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(enqueueOperation);
+        if (project.MaximumBudget is null)
         {
-            throw new InvalidOperationException(
-                $"Project budget enforcement currently requires {BudgetCurrency} cost estimates.");
+            return await enqueueOperation(cancellationToken);
         }
 
-        var jobs = (await _jobs.ListAsync(cancellationToken))
-            .Where(job => job.ProjectId == project.Id)
-            .ToArray();
-        var summary = Build(project, jobs);
-        if (summary.UnknownCostJobCount > 0)
+        var gate = _projectGates.GetOrAdd(project.Id, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
         {
-            throw new InvalidOperationException(
-                "Project contains active/completed generation with unknown cost; hard budget compliance cannot be guaranteed until those costs are resolved.");
+            await EnsureCanReserveInsideGateAsync(project, estimatedCost, currency, cancellationToken);
+            // The gate is intentionally held until the job is persisted. In the current MVP deployment
+            // one backend process owns job enqueueing, so a concurrent request cannot pass the same
+            // hard-cap check before this reservation becomes visible in the persisted job repository.
+            return await enqueueOperation(cancellationToken);
         }
-
-        var projected = summary.ProjectedCost + estimatedCost.Value;
-        if (projected > project.MaximumBudget.Value)
+        finally
         {
-            throw new InvalidOperationException(
-                $"Generation would exceed the project maximum budget: {projected:0.00} {BudgetCurrency} projected > {project.MaximumBudget.Value:0.00} {BudgetCurrency} maximum.");
+            gate.Release();
         }
     }
 
@@ -150,6 +159,49 @@ public sealed class ProjectCostService
             providers,
             scenes);
     }
+
+    private async Task EnsureCanReserveInsideGateAsync(
+        MusicVideoProject project,
+        decimal? estimatedCost,
+        string? currency,
+        CancellationToken cancellationToken)
+    {
+        if (estimatedCost is null)
+        {
+            throw new InvalidOperationException(
+                "This generation has no cost estimate, so it cannot be queued while a hard project budget cap is configured.");
+        }
+        if (estimatedCost < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(estimatedCost), "Estimated generation cost cannot be negative.");
+        }
+        if (!string.Equals(currency ?? BudgetCurrency, BudgetCurrency, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Project budget enforcement currently requires {BudgetCurrency} cost estimates.");
+        }
+
+        var summary = Build(project, await ListProjectJobsAsync(project.Id, cancellationToken));
+        if (summary.UnknownCostJobCount > 0)
+        {
+            throw new InvalidOperationException(
+                "Project contains active/completed generation with unknown cost; hard budget compliance cannot be guaranteed until those costs are resolved.");
+        }
+
+        var projected = summary.ProjectedCost + estimatedCost.Value;
+        if (projected > project.MaximumBudget!.Value)
+        {
+            throw new InvalidOperationException(
+                $"Generation would exceed the project maximum budget: {projected:0.00} {BudgetCurrency} projected > {project.MaximumBudget.Value:0.00} {BudgetCurrency} maximum.");
+        }
+    }
+
+    private async Task<IReadOnlyList<GenerationJob>> ListProjectJobsAsync(
+        Guid projectId,
+        CancellationToken cancellationToken) =>
+        (await _jobs.ListAsync(cancellationToken))
+            .Where(job => job.ProjectId == projectId)
+            .ToArray();
 
     private static bool IsPotentiallyBillable(GenerationJob job) =>
         job.State is not (JobState.Cancelled or JobState.Rejected or JobState.FailedPermanent) || job.ActualCost is not null;
