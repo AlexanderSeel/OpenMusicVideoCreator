@@ -42,6 +42,15 @@ public sealed record TimelineEffectEdit(
     double EndSeconds,
     double Strength);
 
+public sealed record TimelineSubtitleEdit(
+    Guid? Id,
+    string Text,
+    double StartSeconds,
+    double EndSeconds,
+    double PositionY,
+    double Size,
+    double Opacity);
+
 public sealed class TimelineEditorService
 {
     private readonly IProjectRepository _projects;
@@ -289,6 +298,49 @@ public sealed class TimelineEditorService
         return await SaveNextAsync(latest, latest.Clips, latest.Overlays, latest.Effects.Where(item => item.Id != effectId).ToArray(), cancellationToken);
     }
 
+    public async Task<ProjectTimelineVersion> UpsertSubtitleAsync(
+        Guid projectId,
+        TimelineSubtitleEdit edit,
+        CancellationToken cancellationToken = default)
+    {
+        var latest = await RequireLatestAsync(projectId, cancellationToken);
+        var subtitle = new TimelineSubtitle(
+            edit.Id is Guid id && id != Guid.Empty ? id : Guid.NewGuid(),
+            edit.Text.Trim(),
+            edit.StartSeconds,
+            edit.EndSeconds,
+            edit.PositionY,
+            edit.Size,
+            edit.Opacity);
+        subtitle.Validate(latest.DurationSeconds);
+        var subtitles = latest.ResolveSubtitles()
+            .Where(item => item.Id != subtitle.Id)
+            .Append(subtitle)
+            .OrderBy(item => item.StartSeconds)
+            .ThenBy(item => item.Id)
+            .ToArray();
+        return await SaveNextAsync(latest, latest.Clips, latest.Overlays, latest.Effects, cancellationToken, subtitles);
+    }
+
+    public async Task<ProjectTimelineVersion> DeleteSubtitleAsync(
+        Guid projectId,
+        Guid subtitleId,
+        CancellationToken cancellationToken = default)
+    {
+        var latest = await RequireLatestAsync(projectId, cancellationToken);
+        if (latest.ResolveSubtitles().All(item => item.Id != subtitleId))
+        {
+            throw new KeyNotFoundException($"Subtitle '{subtitleId}' was not found.");
+        }
+        return await SaveNextAsync(
+            latest,
+            latest.Clips,
+            latest.Overlays,
+            latest.Effects,
+            cancellationToken,
+            latest.ResolveSubtitles().Where(item => item.Id != subtitleId).ToArray());
+    }
+
     public async Task<ProjectTimelineVersion> RestoreVersionAsync(
         Guid projectId,
         Guid versionId,
@@ -370,7 +422,8 @@ public sealed class TimelineEditorService
             clips,
             [],
             [],
-            GetUtcNow());
+            GetUtcNow(),
+            []);
         timeline.Validate();
         await _timelines.UpsertAsync(timeline, cancellationToken);
         return timeline;
@@ -381,7 +434,8 @@ public sealed class TimelineEditorService
         IReadOnlyList<TimelineClip> clips,
         IReadOnlyList<TimelineOverlay> overlays,
         IReadOnlyList<TimelineEffect> effects,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<TimelineSubtitle>? subtitles = null)
     {
         var next = new ProjectTimelineVersion(
             Guid.NewGuid(),
@@ -394,7 +448,8 @@ public sealed class TimelineEditorService
             clips,
             overlays,
             effects,
-            GetUtcNow());
+            GetUtcNow(),
+            subtitles ?? latest.ResolveSubtitles());
         next.Validate();
         await _timelines.UpsertAsync(next, cancellationToken);
         return next;
