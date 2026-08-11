@@ -145,6 +145,28 @@ public static class TimelineEndpoints
             .Produces<ProjectTimelineVersion>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
+        group.MapPut("/subtitles", async Task<IResult> (
+            Guid projectId,
+            TimelineSubtitleEdit request,
+            TimelineEditorService service,
+            CancellationToken cancellationToken) =>
+            await ExecuteAsync(() => service.UpsertSubtitleAsync(projectId, request, cancellationToken)))
+            .WithName("UpsertTimelineSubtitle")
+            .Produces<ProjectTimelineVersion>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
+
+        group.MapDelete("/subtitles/{subtitleId:guid}", async Task<IResult> (
+            Guid projectId,
+            Guid subtitleId,
+            TimelineEditorService service,
+            CancellationToken cancellationToken) =>
+            await ExecuteAsync(() => service.DeleteSubtitleAsync(projectId, subtitleId, cancellationToken)))
+            .WithName("DeleteTimelineSubtitle")
+            .Produces<ProjectTimelineVersion>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
         group.MapPost("/restore/{versionId:guid}", async Task<IResult> (
             Guid projectId,
             Guid versionId,
