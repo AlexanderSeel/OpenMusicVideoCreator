@@ -295,6 +295,8 @@ public sealed class TimelineEditorService
         CancellationToken cancellationToken = default)
     {
         var project = await RequireProjectAsync(projectId, cancellationToken);
+        var storyboard = await _storyboards.GetLatestAsync(projectId, cancellationToken)
+            ?? throw new InvalidOperationException("Create a storyboard before restoring a timeline.");
         var versions = await _timelines.ListVersionsAsync(projectId, cancellationToken);
         var source = versions.SingleOrDefault(version => version.Id == versionId)
             ?? throw new KeyNotFoundException($"Timeline version '{versionId}' was not found.");
@@ -302,6 +304,11 @@ public sealed class TimelineEditorService
         {
             throw new InvalidOperationException("Cannot restore a timeline created for a different Song asset.");
         }
+        if (source.StoryboardVersionId != storyboard.Id)
+        {
+            throw new InvalidOperationException("Cannot restore a timeline created for an older storyboard version. Reset from the current storyboard first.");
+        }
+
         var latest = versions.OrderByDescending(version => version.Version).FirstOrDefault();
         var restored = source with
         {
@@ -393,9 +400,8 @@ public sealed class TimelineEditorService
         return next;
     }
 
-    private async Task<ProjectTimelineVersion> RequireLatestAsync(Guid projectId, CancellationToken cancellationToken) =>
-        await _timelines.GetLatestAsync(projectId, cancellationToken)
-        ?? await GetOrCreateAsync(projectId, cancellationToken);
+    private Task<ProjectTimelineVersion> RequireLatestAsync(Guid projectId, CancellationToken cancellationToken) =>
+        GetOrCreateAsync(projectId, cancellationToken);
 
     private async Task<MusicVideoProject> RequireProjectAsync(Guid projectId, CancellationToken cancellationToken) =>
         await _projects.GetAsync(projectId, cancellationToken)
