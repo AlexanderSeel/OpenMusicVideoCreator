@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenMusicVideoCreator.Application.Abstractions;
+using OpenMusicVideoCreator.Application.Costs;
 using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Application.Planning;
 using OpenMusicVideoCreator.Application.Providers;
@@ -59,6 +60,7 @@ public sealed class VideoGenerationCoordinator
     private readonly ClipVariantService _clips;
     private readonly IJobQueue _jobs;
     private readonly TimeProvider _timeProvider;
+    private readonly ProjectCostService? _costs;
 
     public VideoGenerationCoordinator(
         IProjectRepository projects,
@@ -72,7 +74,8 @@ public sealed class VideoGenerationCoordinator
         IVideoGenerationSettingsRepository settings,
         ClipVariantService clips,
         IJobQueue jobs,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ProjectCostService? costs = null)
     {
         _projects = projects;
         _storyboards = storyboards;
@@ -86,6 +89,7 @@ public sealed class VideoGenerationCoordinator
         _clips = clips;
         _jobs = jobs;
         _timeProvider = timeProvider;
+        _costs = costs;
     }
 
     public async Task<SceneVideoGenerationSettings> GetSettingsAsync(
@@ -144,6 +148,10 @@ public sealed class VideoGenerationCoordinator
         var approved = await ResolveApprovedKeyframesAsync(projectId, sceneId, settings.UseEndFrame, cancellationToken);
         var prompt = await RequireSelectedPromptAsync(projectId, scene, cancellationToken);
         var estimatedCost = selection.Provider.Id == "mock-video" ? 0m : (decimal?)null;
+        if (_costs is not null)
+        {
+            await _costs.EnsureCanReserveAsync(project, estimatedCost, "USD", cancellationToken);
+        }
         var fallbacks = settings.AllowFallback
             ? providerPlan.Alternatives
                 .Where(candidate => CanAcceptResolvedRequest(
