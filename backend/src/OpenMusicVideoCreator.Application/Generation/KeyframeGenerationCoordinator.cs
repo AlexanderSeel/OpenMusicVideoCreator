@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenMusicVideoCreator.Application.Abstractions;
+using OpenMusicVideoCreator.Application.Costs;
 using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Application.Library;
 using OpenMusicVideoCreator.Application.Planning;
@@ -57,6 +58,7 @@ public sealed class KeyframeGenerationCoordinator
     private readonly KeyframeVariantService _variants;
     private readonly IJobQueue _jobs;
     private readonly TimeProvider _timeProvider;
+    private readonly ProjectCostService? _costs;
 
     public KeyframeGenerationCoordinator(
         IProjectRepository projects,
@@ -71,7 +73,8 @@ public sealed class KeyframeGenerationCoordinator
         IKeyframeGenerationSettingsRepository settings,
         KeyframeVariantService variants,
         IJobQueue jobs,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ProjectCostService? costs = null)
     {
         _projects = projects;
         _storyboards = storyboards;
@@ -86,6 +89,7 @@ public sealed class KeyframeGenerationCoordinator
         _variants = variants;
         _jobs = jobs;
         _timeProvider = timeProvider;
+        _costs = costs;
     }
 
     public async Task<SceneKeyframeGenerationSettings> GetSettingsAsync(
@@ -148,6 +152,10 @@ public sealed class KeyframeGenerationCoordinator
         var prompt = await RequireSelectedPromptAsync(projectId, scene, cancellationToken);
         var references = await ResolveReferencesAsync(projectId, scene, selection.Model, cancellationToken);
         var estimatedCost = selection.Provider.Id == "mock-image" ? 0m : (decimal?)null;
+        if (_costs is not null)
+        {
+            await _costs.EnsureCanReserveAsync(project, estimatedCost, "USD", cancellationToken);
+        }
 
         var planned = await _variants.RegisterPlannedAsync(
             projectId,
