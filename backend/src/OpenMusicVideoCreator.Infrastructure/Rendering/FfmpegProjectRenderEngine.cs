@@ -132,7 +132,7 @@ public sealed class FfmpegProjectRenderEngine : IProjectRenderEngine
         args.Add("-i");
         args.Add(songPath);
 
-        var filters = new List<string>(manifest.Clips.Count * 2 + manifest.ResolveOverlays().Count * 2 + manifest.ResolveEffects().Count + 2);
+        var filters = new List<string>(manifest.Clips.Count * 2 + manifest.ResolveOverlays().Count * 2 + manifest.ResolveEffects().Count + manifest.ResolveSubtitles().Count + 2);
         for (var index = 0; index < manifest.Clips.Count; index++)
         {
             var clip = manifest.Clips[index];
@@ -230,6 +230,17 @@ public sealed class FfmpegProjectRenderEngine : IProjectRenderEngine
             currentLabel = next;
         }
 
+        var subtitleNumber = 0;
+        foreach (var subtitle in manifest.ResolveSubtitles().OrderBy(item => item.StartSeconds).ThenBy(item => item.Id))
+        {
+            var next = $"sub{subtitleNumber++}";
+            var yFactor = 0.05 + (((subtitle.PositionY + 1) / 2) * 0.9);
+            var fontSizeFactor = 0.05 * subtitle.Size;
+            filters.Add(
+                $"[{currentLabel}]drawtext=text='{EscapeDrawtextText(subtitle.Text)}':expansion=none:fontcolor=white@{F(subtitle.Opacity)}:fontsize=h*{F(fontSizeFactor)}:borderw=2:bordercolor=black@{F(subtitle.Opacity)}:x=(w-text_w)/2:y=(h-text_h)*{F(yFactor)}:enable='between(t,{F(subtitle.StartSeconds)},{F(subtitle.EndSeconds)})'[{next}]");
+            currentLabel = next;
+        }
+
         args.Add("-filter_complex");
         args.Add(string.Join(';', filters));
         args.Add("-map");
@@ -294,6 +305,13 @@ public sealed class FfmpegProjectRenderEngine : IProjectRenderEngine
         if (transition.Contains("fade", StringComparison.OrdinalIgnoreCase)) return TimelineTransitionKind.Fade;
         return TimelineTransitionKind.Cut;
     }
+
+    private static string EscapeDrawtextText(string value) =>
+        value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("'", "\\'", StringComparison.Ordinal)
+            .Replace(":", "\\:", StringComparison.Ordinal)
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal);
 
     private static bool IsStillImage(string path) =>
         Path.GetExtension(path).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".webp" or ".gif";
