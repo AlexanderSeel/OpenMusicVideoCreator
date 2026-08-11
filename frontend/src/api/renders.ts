@@ -3,6 +3,7 @@ import type {
   TimelineColorAdjustment,
   TimelineEffect,
   TimelineOverlay,
+  TimelineSubtitle,
   TimelineTransitionKind,
 } from "./timeline";
 
@@ -41,6 +42,7 @@ export interface ProjectRenderManifest {
   timelineVersionId?: string | null;
   overlays?: TimelineOverlay[] | null;
   effects?: TimelineEffect[] | null;
+  subtitles?: TimelineSubtitle[] | null;
 }
 
 export interface ProjectRenderAttempt {
