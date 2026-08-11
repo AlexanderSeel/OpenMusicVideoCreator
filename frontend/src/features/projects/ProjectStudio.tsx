@@ -41,6 +41,7 @@ export function ProjectStudio() {
   const [saving, setSaving] = useState(false);
   const [online, setOnline] = useState(true);
   const [mode, setMode] = useState<StudioMode>("Simple");
+  const [costRefreshKey, setCostRefreshKey] = useState(0);
 
   async function openProject(project: ProjectResponse, signal?: AbortSignal) {
     setEditor(projectToEditor(project));
@@ -111,6 +112,7 @@ export function ProjectStudio() {
       const refreshed = nextProjects.find((project) => project.id === saved.id) ?? saved;
       setEditor(projectToEditor(refreshed));
       setSelectedSong(null);
+      setCostRefreshKey((current) => current + 1);
       setMessage(projectId ? "Project saved." : "Project created.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not save project.");
@@ -161,7 +163,7 @@ export function ProjectStudio() {
         <KeyframeWorkspace projectId={editor.id} mode={mode} />
         <VideoGenerationWorkspace projectId={editor.id} mode={mode} />
         <GenerationQueuePanel projectId={editor.id} mode={mode} />
-        <ProjectCostPanel projectId={editor.id} mode={mode} />
+        <ProjectCostPanel projectId={editor.id} mode={mode} refreshKey={costRefreshKey} />
         {mode !== "Simple" ? <><AdvancedTimelineAnalysisPanel projectId={editor.id} /><AdvancedTimelineEditor projectId={editor.id} /></> : null}
         <ProjectRenderWorkspace projectId={editor.id} />
       </section>
