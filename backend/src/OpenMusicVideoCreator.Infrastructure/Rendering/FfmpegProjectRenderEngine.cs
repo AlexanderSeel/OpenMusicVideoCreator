@@ -132,11 +132,14 @@ public sealed class FfmpegProjectRenderEngine : IProjectRenderEngine
         args.Add("-i");
         args.Add(songPath);
 
-        var filters = new List<string>(manifest.Clips.Count + manifest.ResolveOverlays().Count * 2 + manifest.ResolveEffects().Count + 2);
+        var filters = new List<string>(manifest.Clips.Count * 2 + manifest.ResolveOverlays().Count * 2 + manifest.ResolveEffects().Count + 2);
         for (var index = 0; index < manifest.Clips.Count; index++)
         {
             var clip = manifest.Clips[index];
-            var duration = F(clip.DurationSeconds);
+            var outgoingCrossfade = index + 1 < manifest.Clips.Count
+                ? ResolveCrossfadeDuration(manifest.Clips[index + 1])
+                : 0;
+            var renderDuration = clip.DurationSeconds + outgoingCrossfade;
             var sourceDuration = F(clip.SourceDurationSeconds ?? clip.DurationSeconds);
             var transform = clip.ResolveTransform();
             var color = clip.ResolveColor();
@@ -160,24 +163,43 @@ public sealed class FfmpegProjectRenderEngine : IProjectRenderEngine
                 chain.Add($"colorchannelmixer=rr={F(transform.Opacity)}:gg={F(transform.Opacity)}:bb={F(transform.Opacity)}");
             }
 
-            var minimumPadding = Math.Max(clip.FreezeExtensionSeconds, clip.DurationSeconds);
+            var minimumPadding = Math.Max(clip.FreezeExtensionSeconds, renderDuration);
             chain.Add($"tpad=stop_mode=clone:stop_duration={F(minimumPadding)}");
-            chain.Add($"trim=duration={duration}");
+            chain.Add($"trim=duration={F(renderDuration)}");
             chain.Add("setpts=PTS-STARTPTS");
             chain.Add($"fps={manifest.FramesPerSecond}");
-            if (index > 0 && (clip.TransitionKind ?? ParseTransition(clip.TransitionIn)) is TimelineTransitionKind.Fade or TimelineTransitionKind.Crossfade)
+            chain.Add("settb=AVTB");
+
+            var transitionKind = clip.TransitionKind ?? ParseTransition(clip.TransitionIn);
+            if (transitionKind == TimelineTransitionKind.Fade)
             {
-                var transitionDuration = clip.TransitionDurationSeconds > 0
-                    ? clip.TransitionDurationSeconds
-                    : Math.Min(0.35, clip.DurationSeconds / 4d);
-                chain.Add($"fade=t=in:st=0:d={F(transitionDuration)}");
+                chain.Add($"fade=t=in:st=0:d={F(ResolveTransitionDuration(clip))}");
             }
+
             chain.Add("format=yuv420p");
             filters.Add($"[{index}:v:0]{string.Join(',', chain)}[v{index}]");
         }
 
-        var currentLabel = "outv";
-        filters.Add(string.Concat(Enumerable.Range(0, manifest.Clips.Count).Select(index => $"[v{index}]")) + $"concat=n={manifest.Clips.Count}:v=1:a=0[{currentLabel}]");
+        var currentLabel = "v0";
+        for (var index = 1; index < manifest.Clips.Count; index++)
+        {
+            var clip = manifest.Clips[index];
+            var transitionKind = clip.TransitionKind ?? ParseTransition(clip.TransitionIn);
+            var nextLabel = $"join{index}";
+            if (transitionKind == TimelineTransitionKind.Crossfade)
+            {
+                var duration = ResolveTransitionDuration(clip);
+                filters.Add($"[{currentLabel}][v{index}]xfade=transition=fade:duration={F(duration)}:offset={F(clip.TimelineStartSeconds)}[{nextLabel}]");
+            }
+            else
+            {
+                filters.Add($"[{currentLabel}][v{index}]concat=n=2:v=1:a=0[{nextLabel}]");
+            }
+            currentLabel = nextLabel;
+        }
+
+        filters.Add($"[{currentLabel}]null[outv]");
+        currentLabel = "outv";
 
         var effectNumber = 0;
         foreach (var effect in manifest.ResolveEffects().OrderBy(effect => effect.StartSeconds).ThenBy(effect => effect.Id))
@@ -233,6 +255,17 @@ public sealed class FfmpegProjectRenderEngine : IProjectRenderEngine
         args.Add(outputPath);
         return args;
     }
+
+    private static double ResolveCrossfadeDuration(RenderTimelineClip clip)
+    {
+        var kind = clip.TransitionKind ?? ParseTransition(clip.TransitionIn);
+        return kind == TimelineTransitionKind.Crossfade ? ResolveTransitionDuration(clip) : 0;
+    }
+
+    private static double ResolveTransitionDuration(RenderTimelineClip clip) =>
+        clip.TransitionDurationSeconds > 0
+            ? clip.TransitionDurationSeconds
+            : Math.Min(0.35, clip.DurationSeconds / 4d);
 
     private static void AppendTransform(List<string> chain, int width, int height, TimelineClipTransform transform)
     {
