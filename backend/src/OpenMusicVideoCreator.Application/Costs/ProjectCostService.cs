@@ -180,6 +180,10 @@ public sealed class ProjectCostService
             throw new InvalidOperationException(
                 $"Project budget enforcement currently requires {BudgetCurrency} cost estimates.");
         }
+        if (estimatedCost == 0)
+        {
+            return;
+        }
 
         var summary = Build(project, await ListProjectJobsAsync(project.Id, cancellationToken));
         if (summary.UnknownCostJobCount > 0)
