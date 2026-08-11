@@ -8,9 +8,10 @@ import type { StudioMode } from "@/src/features/generation/KeyframeWorkspace";
 interface ProjectCostPanelProps {
   projectId?: string;
   mode: StudioMode;
+  refreshKey?: number;
 }
 
-export function ProjectCostPanel({ projectId, mode }: ProjectCostPanelProps) {
+export function ProjectCostPanel({ projectId, mode, refreshKey = 0 }: ProjectCostPanelProps) {
   const [summary, setSummary] = useState<ProjectCostSummary | null>(null);
   const [message, setMessage] = useState("");
 
@@ -25,7 +26,7 @@ export function ProjectCostPanel({ projectId, mode }: ProjectCostPanelProps) {
     } catch (error) {
       if (!signal?.aborted) setMessage(error instanceof Error ? error.message : "Could not load project costs.");
     }
-  }, [projectId]);
+  }, [projectId, refreshKey]);
 
   useEffect(() => {
     const controller = new AbortController();
