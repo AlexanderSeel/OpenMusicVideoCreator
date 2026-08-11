@@ -6,6 +6,7 @@ using OpenMusicVideoCreator.Api.Jobs;
 using OpenMusicVideoCreator.Api.Middleware;
 using OpenMusicVideoCreator.Application.Abstractions;
 using OpenMusicVideoCreator.Application.Analysis;
+using OpenMusicVideoCreator.Application.Costs;
 using OpenMusicVideoCreator.Application.Generation;
 using OpenMusicVideoCreator.Application.Jobs;
 using OpenMusicVideoCreator.Application.Library;
@@ -146,6 +147,7 @@ builder.Services.AddSingleton<IProjectRenderEngine, FfmpegProjectRenderEngine>()
 builder.Services.AddSingleton<ProjectRenderService>();
 
 builder.Services.AddSingleton<IJobRepository, DuckDbJobRepository>();
+builder.Services.AddSingleton<ProjectCostService>();
 builder.Services.AddSingleton<JobChangeHub>();
 builder.Services.AddSingleton<IJobChangePublisher>(services => services.GetRequiredService<JobChangeHub>());
 builder.Services.AddSingleton<IJobChangeStream>(services => services.GetRequiredService<JobChangeHub>());
@@ -197,6 +199,7 @@ app.MapKeyframeEndpoints();
 app.MapClipEndpoints();
 app.MapTimelineEndpoints();
 app.MapRenderEndpoints();
+app.MapCostEndpoints();
 app.MapProviderEndpoints();
 app.MapJobEndpoints();
 
