@@ -36,7 +36,7 @@ No paid-provider credentials are required for the baseline/mock test plan.
 - [ ] `dotnet test backend/OpenMusicVideoCreator.sln -c Release`
   - 2026-08-10 earlier run: 38/44 API tests passed. Failures: concurrent DuckDB initialization conflicts on `schema_migrations` (four tests), a planning scene-boundary expectation, and visual-library collection round-trip equality.
   - 2026-08-10 repository fix: the mock Director now uses a music-relative anchor tolerance that reaches the expected 58s structural boundary and tests also cover structured scene details. **Rerun still required; unrelated DuckDB/library failures remain unresolved until proven otherwise.**
-  - Blocks 9–12 add keyframe/video/render/timeline/cancellation tests; none have been executed in the current connector-only environment.
+  - Blocks 9–12 add keyframe/video/render/timeline/cancellation/crossfade/subtitle tests; none have been executed in the current connector-only environment.
 - [ ] `./scripts/validate.sh` on Linux/macOS or `./scripts/validate.ps1` on Windows/PowerShell.
 - [ ] `./scripts/run.ps1 -NoBrowser` starts the backend and frontend, serves `/healthz` and `http://localhost:3000`, and stops both processes with Ctrl+C.
 - [x] `npm audit` reports no known vulnerabilities.
@@ -204,14 +204,17 @@ Real video-provider validation is intentionally deferred until the complete mock
 
 ## Block 11 — Deterministic assembly, preview render, and initial export
 
-- [ ] Run `ProjectRenderFlowTests`, `JobExecutionCancellationTests`, and `AdvancedTimelineRenderArgumentsTests`; confirm render provenance, lifecycle, active cancellation, and FFmpeg argument-construction tests pass.
+- [ ] Run `ProjectRenderFlowTests`, `JobExecutionCancellationTests`, `AdvancedTimelineRenderArgumentsTests`, `CrossfadeRenderArgumentsTests`, and `SubtitleRenderArgumentsTests`; confirm render provenance, lifecycle, active cancellation, advanced composition, true crossfade, subtitle escaping, and FFmpeg argument-construction tests pass.
 - [ ] Run `frontend/tests/project-render-workspace-ui.test.mjs`, `frontend/tests/advanced-timeline-ui.test.mjs`, TypeScript typecheck, lint, and frontend build.
 - [ ] Queue Preview through `POST /api/projects/{projectId}/renders/`; confirm HTTP returns `202` before FFmpeg completes and the persistent `project.render` job later reaches `Completed`.
 - [ ] Confirm the render manifest uses the latest compatible Advanced timeline version when its exact Storyboard/Song IDs match; confirm a stale timeline is ignored rather than silently applied to a newer storyboard/song.
-- [ ] Confirm unchanged Preview and Final renders have the same `timelineSha256`, `TimelineVersionId`, `StoryboardVersionId`, `SongMediaAssetId`, clip provenance, source trims/rates/freezes, transitions, transforms/color, overlays, and effects.
+- [ ] Confirm unchanged Preview and Final renders have the same `timelineSha256`, `TimelineVersionId`, `StoryboardVersionId`, `SongMediaAssetId`, clip provenance, source trims/rates/freezes, transitions, transforms/color, overlays, effects, and subtitles.
 - [ ] Verify every FFmpeg source path is a separate `ProcessStartInfo.ArgumentList` entry; repeat with clip/song/overlay filenames containing spaces and shell metacharacters and confirm no shell interpretation occurs.
 - [ ] Inspect generated FFmpeg mapping and confirm the only output audio input is the project's original uploaded Song; generated clip and overlay audio must never be mapped.
-- [ ] Exercise source trim, playback rate, freeze extension, scale/position, crop, opacity, brightness/contrast/saturation, fade, overlay, and effect filters against a known fixture and confirm FFmpeg accepts the generated filter graph.
+- [ ] Exercise source trim, playback rate, freeze extension, scale/position, crop, opacity, brightness/contrast/saturation, Fade, true neighboring Crossfade, overlay, effect, and subtitle filters against a known fixture and confirm FFmpeg accepts the generated filter graph.
+- [ ] For Crossfade, confirm the outgoing clip is extended by exactly the transition duration, `xfade` starts at the incoming clip's nominal timeline boundary, and final output duration remains the original song/timeline duration.
+- [ ] Render subtitles containing apostrophes, colons, backslashes, and line breaks; confirm drawtext escaping is safe, `expansion=none` is used, timing/style match the persisted subtitle, and the text cannot alter the filter graph.
+- [ ] Change subtitle text/timing/style only and confirm `timelineSha256` changes; queue unchanged Preview/Final after that change and confirm those two outputs share the new exact hash.
 - [ ] Generate Preview and confirm it uses the lower-resolution/faster profile while Final uses the configured final resolution/H.264 profile; both retain the same timeline hash.
 - [ ] Exercise configured 16:9, 9:16, and 1:1 project resolutions and confirm output dimensions are even and reuse selected source variants rather than triggering regeneration.
 - [ ] Cancel an actively running FFmpeg render through the render-specific endpoint; confirm the process is killed, job/render become `Cancelled`, no output/media metadata is retained, and stale worker success cannot overwrite cancellation.
@@ -225,27 +228,28 @@ Real video-provider validation is intentionally deferred until the complete mock
 - [ ] Download a completed output through `/api/projects/{projectId}/renders/{renderId}/output` and confirm the MP4 is range-safe/playable in the supported browser.
 - [ ] Keyboard/responsive pass for Preview/Final actions, render history, cancel/retry, attempt history, status/error state, provenance details, command-log disclosure, and download links.
 
-True neighboring crossfade composition and subtitle authoring/rendering remain open implementation scope and must not be marked validated as current fade-in behavior.
+Repository implementation includes Crossfade and burned-in subtitles; none of the FFmpeg behavior above is considered validated until executed locally.
 
 ## Block 12 — Advanced timeline editor and Scene Inspector
 
-- [ ] Run `TimelineEditorServiceTests` and `AdvancedTimelineRenderArgumentsTests`; confirm timeline versioning, protected Song provenance, split/reorder/replace/restore, overlays/effects, and render-argument tests pass.
+- [ ] Run `TimelineEditorServiceTests`, `TimelineSubtitleFlowTests`, `TimelineCurrentStoryboardTests`, and `AdvancedTimelineRenderArgumentsTests`; confirm timeline versioning, protected Song provenance, split/reorder/replace/restore, current-storyboard guards, overlays/effects/subtitles, and render-argument tests pass.
 - [ ] Run `frontend/tests/advanced-timeline-ui.test.mjs`, TypeScript typecheck, lint, and frontend build against the current Advanced/Custom workspace.
 - [ ] Initialize Advanced timeline from the latest storyboard; confirm it pins the exact `StoryboardVersionId`, original `SongMediaAssetId`, selected completed clip variants/media, and `MusicTrackLocked=true`.
-- [ ] Restart backend/recreate repository and confirm all timeline versions survive under persistent project settings with parent-version provenance intact.
+- [ ] Restart backend/recreate repository and confirm all timeline versions survive under persistent project settings with parent-version provenance intact, including subtitles.
 - [ ] Verify Advanced/Custom displays persisted Block 6 waveform, quiet ranges, song sections, phrase boundaries, beat/bar markers, and lyric timing for the exact current analysis version; Simple Mode must not mount these Advanced panels.
 - [ ] Edit one clip's source in/duration, slight playback rate, freeze extension, transition, scale/position, crop, opacity, and basic color; confirm a new timeline version is created and the prior version remains byte-for-byte recoverable in persisted data.
 - [ ] Move/reorder clips and confirm timeline slots remain contiguous; split a clip and confirm two new segments reference the same original generated media without mutating it.
 - [ ] Replace a timeline segment with another completed variant from the same scene; reject incomplete variants, variants from another scene, missing media, or cross-project media.
-- [ ] Restore an older timeline version and confirm restoration creates a new latest version rather than changing/deleting historical versions.
+- [ ] Change the storyboard after a timeline exists; confirm the next edit initializes the compatible current timeline rather than mutating stale state, stale clip IDs fail, and restoring an old-storyboard timeline is rejected.
+- [ ] Restore an older compatible timeline version and confirm restoration creates a new latest version rather than changing/deleting historical versions.
 - [ ] Attempt restoration after replacing the project's Song; confirm a timeline tied to the previous Song is rejected/not silently applied.
-- [ ] Add/update/delete overlay and effect records; confirm every change creates a new timeline version and validates project ownership/timing/bounds.
+- [ ] Add/update/delete overlay, effect, and subtitle records from the Advanced UI; confirm every change creates a new timeline version and validates ownership/timing/bounds/text/style constraints.
+- [ ] Confirm the timeline visibly exposes Overlay, Effect, and Subtitle lanes and responsive composition controls; edit/delete operations remain keyboard reachable.
 - [ ] Confirm Scene Inspector exposes Story, Character, Environment, Camera, Generation, and Prompt sections and completed-variant selection without adding unsupported provider fields.
 - [ ] Use prompt refinement in Advanced Inspector and confirm it creates only a new prompt/storyboard revision; inspect the job table/queue and verify no paid image/video job was automatically created.
-- [ ] Change one trim and one Fade transition, render again, and confirm the render manifest pins the new `TimelineVersionId`/edit hash while the previous timeline version and previous render remain available.
+- [ ] Change one trim and one true Crossfade transition, render again, and confirm the render manifest pins the new `TimelineVersionId`/edit hash while the previous timeline version and previous render remain available.
 - [ ] Confirm original Song bytes/checksum and project Song reference are unchanged after every timeline edit and after rendering; generated clip source assets are also read-only.
-- [ ] Confirm Crossfade remains visibly an intent/configuration but is not represented as a proven true neighboring xfade until the corresponding implementation item is completed.
-- [ ] Keyboard/responsive pass for version restore/reset, analysis lanes, clip selection, move/split, inspector controls, variant selection, prompt-only regeneration, and horizontal timeline scrolling.
+- [ ] Keyboard/responsive pass for version restore/reset, analysis lanes, clip selection, move/split, composition controls, inspector controls, variant selection, prompt-only regeneration, and horizontal timeline scrolling.
 
 ## Cross-cutting security/data checks after Blocks 1–12
 
@@ -256,6 +260,7 @@ True neighboring crossfade composition and subtitle authoring/rendering remain o
 - [ ] Restart application between key operations and verify DuckDB/project settings/jobs/media metadata/timeline/render history remain the source of truth.
 - [ ] Confirm generated keyframe/clip/render preview/download routes only open media metadata belonging to the requested project and cannot traverse outside the configured media root.
 - [ ] Confirm Advanced timeline overlay IDs cannot reference cross-project media and render source resolution remains constrained by `LocalMediaPathResolver`.
+- [ ] Confirm subtitle text is passed only as an escaped drawtext filter value, never as a shell argument or path, and cannot inject additional FFmpeg filters.
 
 ---
 
