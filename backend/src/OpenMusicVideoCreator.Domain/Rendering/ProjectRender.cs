@@ -73,10 +73,12 @@ public sealed record ProjectRenderManifest(
     string TimelineSha256,
     Guid? TimelineVersionId = null,
     IReadOnlyList<TimelineOverlay>? Overlays = null,
-    IReadOnlyList<TimelineEffect>? Effects = null)
+    IReadOnlyList<TimelineEffect>? Effects = null,
+    IReadOnlyList<TimelineSubtitle>? Subtitles = null)
 {
     public IReadOnlyList<TimelineOverlay> ResolveOverlays() => Overlays ?? [];
     public IReadOnlyList<TimelineEffect> ResolveEffects() => Effects ?? [];
+    public IReadOnlyList<TimelineSubtitle> ResolveSubtitles() => Subtitles ?? [];
 
     public void Validate()
     {
@@ -121,6 +123,7 @@ public sealed record ProjectRenderManifest(
 
         foreach (var overlay in ResolveOverlays()) overlay.Validate(DurationSeconds);
         foreach (var effect in ResolveEffects()) effect.Validate(DurationSeconds);
+        foreach (var subtitle in ResolveSubtitles()) subtitle.Validate(DurationSeconds);
     }
 }
 
