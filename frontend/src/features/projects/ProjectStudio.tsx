@@ -14,6 +14,7 @@ import {
   type VisualLibraryResponse,
 } from "@/src/api/client";
 import { SongAnalysisPanel } from "@/src/features/analysis/SongAnalysisPanel";
+import { ProjectCostPanel } from "@/src/features/costs/ProjectCostPanel";
 import { GenerationQueuePanel } from "@/src/features/generation/GenerationQueuePanel";
 import { KeyframeWorkspace, type StudioMode } from "@/src/features/generation/KeyframeWorkspace";
 import { VideoGenerationWorkspace } from "@/src/features/generation/VideoGenerationWorkspace";
@@ -160,6 +161,7 @@ export function ProjectStudio() {
         <KeyframeWorkspace projectId={editor.id} mode={mode} />
         <VideoGenerationWorkspace projectId={editor.id} mode={mode} />
         <GenerationQueuePanel projectId={editor.id} mode={mode} />
+        <ProjectCostPanel projectId={editor.id} mode={mode} />
         {mode !== "Simple" ? <><AdvancedTimelineAnalysisPanel projectId={editor.id} /><AdvancedTimelineEditor projectId={editor.id} /></> : null}
         <ProjectRenderWorkspace projectId={editor.id} />
       </section>
