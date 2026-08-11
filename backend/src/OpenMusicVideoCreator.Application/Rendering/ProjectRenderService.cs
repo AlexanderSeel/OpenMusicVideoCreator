@@ -129,12 +129,14 @@ public sealed class ProjectRenderService
         IReadOnlyList<RenderTimelineClip> timeline;
         IReadOnlyList<TimelineOverlay> overlays;
         IReadOnlyList<TimelineEffect> effects;
+        IReadOnlyList<TimelineSubtitle> subtitles;
         Guid? timelineVersionId;
         if (advancedTimeline is not null)
         {
             timeline = await BuildAdvancedTimelineAsync(projectId, advancedTimeline, projectClips, cancellationToken);
             overlays = advancedTimeline.Overlays;
             effects = advancedTimeline.Effects;
+            subtitles = advancedTimeline.ResolveSubtitles();
             timelineVersionId = advancedTimeline.Id;
             var storyboardDuration = storyboard.Scenes.Max(scene => scene.EndSeconds);
             if (Math.Abs(advancedTimeline.DurationSeconds - storyboardDuration) > 0.002)
@@ -156,6 +158,7 @@ public sealed class ProjectRenderService
             timeline = await BuildStoryboardTimelineAsync(projectId, storyboard, projectClips, cancellationToken);
             overlays = [];
             effects = [];
+            subtitles = [];
             timelineVersionId = null;
         }
 
@@ -166,7 +169,7 @@ public sealed class ProjectRenderService
             .ToArray();
         var durationSeconds = timeline.Max(item => item.TimelineStartSeconds + item.DurationSeconds);
         var (width, height) = ResolveOutputSize(project, kind);
-        var timelineHash = ComputeTimelineHash(storyboard.Id, song.Id, timeline, overlays, effects);
+        var timelineHash = ComputeTimelineHash(storyboard.Id, song.Id, timeline, overlays, effects, subtitles);
         var manifest = new ProjectRenderManifest(
             project.Id,
             storyboard.Id,
@@ -180,7 +183,8 @@ public sealed class ProjectRenderService
             timelineHash,
             timelineVersionId,
             overlays,
-            effects);
+            effects,
+            subtitles);
         manifest.Validate();
 
         var existing = await _renders.ListAsync(projectId, cancellationToken);
@@ -568,7 +572,8 @@ public sealed class ProjectRenderService
         Guid songId,
         IReadOnlyList<RenderTimelineClip> clips,
         IReadOnlyList<TimelineOverlay> overlays,
-        IReadOnlyList<TimelineEffect> effects)
+        IReadOnlyList<TimelineEffect> effects,
+        IReadOnlyList<TimelineSubtitle> subtitles)
     {
         var canonical = new StringBuilder()
             .Append(storyboardId.ToString("N")).Append('|')
@@ -601,6 +606,16 @@ public sealed class ProjectRenderService
         foreach (var effect in effects.OrderBy(item => item.StartSeconds).ThenBy(item => item.Id))
         {
             canonical.Append("|e:").Append(effect.Kind).Append(':').Append(F(effect.StartSeconds)).Append(':').Append(F(effect.EndSeconds)).Append(':').Append(F(effect.Strength));
+        }
+        foreach (var subtitle in subtitles.OrderBy(item => item.StartSeconds).ThenBy(item => item.Id))
+        {
+            canonical.Append("|s:")
+                .Append(Convert.ToBase64String(Encoding.UTF8.GetBytes(subtitle.Text))).Append(':')
+                .Append(F(subtitle.StartSeconds)).Append(':')
+                .Append(F(subtitle.EndSeconds)).Append(':')
+                .Append(F(subtitle.PositionY)).Append(':')
+                .Append(F(subtitle.Size)).Append(':')
+                .Append(F(subtitle.Opacity));
         }
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString()))).ToLowerInvariant();
     }
